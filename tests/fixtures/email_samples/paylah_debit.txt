@@ -1,0 +1,7 @@
+Subject: DBS PayLah Transaction Alert
+
+You have made a payment of $8.50 at FairPrice on 25 June 2024 12:45.
+
+Transaction ID: PL2024062500001
+
+This is an automated notification from DBS PayLah.

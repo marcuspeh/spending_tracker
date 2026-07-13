@@ -1,0 +1,9 @@
+Subject: UOB Card Refund Alert
+
+A refund of $15.00 has been credited to your UOB card on 24 June 2024.
+
+Card ending in 1234
+
+Transaction ID: UOB2024062400002
+
+This is an automated notification from UOB.

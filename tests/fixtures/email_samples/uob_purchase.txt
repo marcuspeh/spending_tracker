@@ -1,0 +1,9 @@
+Subject: UOB Card Transaction Alert
+
+A transaction of $45.20 was made at Cold Storage on 25 June 2024.
+
+Card ending in 1234
+
+Transaction ID: UOB2024062500001
+
+This is an automated notification from UOB.
