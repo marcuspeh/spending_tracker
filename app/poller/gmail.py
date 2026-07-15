@@ -7,7 +7,14 @@ from imap_tools import AND, MailBox
 from app.config.settings import get_settings
 from app.database.enums import ImportStatus
 from app.services.email_ingestion import EmailIngestionService
-from app.services.parsers import DBSParser, ParserRegistry, UOBParser
+from app.services.parsers import (
+    DBSCCParser,
+    DBSPayNowParser,
+    ParserRegistry,
+    PayLahParser,
+    UOBCCParser,
+    UOBPayNowParser,
+)
 
 logger = structlog.get_logger()
 
@@ -24,11 +31,16 @@ class GmailPoller:
         self._running = False
         self._task: asyncio.Task | None = None
 
-        # Set up parser registry — UOB checked first since UOB PayNow/PayLah have
-        # bank-specific enum values and should not fall through to DBS.
+        # Set up parser registry — one parser per channel. DBSPayNowParser is
+        # registered before PayLahParser so PayNow wins when both signals appear
+        # (some PayLah-funded transfers come from PayLah! Alerts but say
+        # "PayNow Transfer" in the body).
         self.parser_registry = ParserRegistry()
-        self.parser_registry.register(UOBParser())
-        self.parser_registry.register(DBSParser())
+        self.parser_registry.register(UOBCCParser())
+        self.parser_registry.register(UOBPayNowParser())
+        self.parser_registry.register(DBSCCParser())
+        self.parser_registry.register(DBSPayNowParser())
+        self.parser_registry.register(PayLahParser())
 
     async def start(self) -> None:
         """Start the polling loop."""
