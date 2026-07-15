@@ -1,0 +1,30 @@
+Subject: Fwd: Card Transaction Alert
+
+From: ibanking.alert@dbs.com <ibanking.alert@dbs.com>
+
+Card Transaction Alert
+[image: DBS | Live more, Bank less]
+
+Card Transaction Alert
+
+Transaction Ref: SP-DBS-CC-FAKE-0001
+
+Dear Sir / Madam,
+
+We refer to your card transaction request dated 13/07/26. We are pleased to
+confirm that the transaction was completed.
+
+Date & Time: 13 JUL 15:30 (SGT)
+Amount: SGD3.98
+From: DBS/POSB card ending 9700
+To: APPLE.COM/BILL
+
+If unauthorised, please login to DBS digibank mobile to report fraud
+dispute immediately. Alternatively, call our DBS hotline.
+
+Thank you for banking with us.
+
+Yours faithfully,
+DBS Bank Ltd
+
+Please do not reply to this email as it is auto generated

@@ -7,7 +7,7 @@ from imap_tools import AND, MailBox
 from app.config.settings import get_settings
 from app.database.enums import ImportStatus
 from app.services.email_ingestion import EmailIngestionService
-from app.services.parsers import ParserRegistry, PayLahParser, PayNowParser, UOBParser
+from app.services.parsers import DBSParser, ParserRegistry, UOBParser
 
 logger = structlog.get_logger()
 
@@ -24,11 +24,11 @@ class GmailPoller:
         self._running = False
         self._task: asyncio.Task | None = None
 
-        # Set up parser registry
+        # Set up parser registry — UOB checked first since UOB PayNow/PayLah have
+        # bank-specific enum values and should not fall through to DBS.
         self.parser_registry = ParserRegistry()
-        self.parser_registry.register(PayNowParser())
-        self.parser_registry.register(PayLahParser())
         self.parser_registry.register(UOBParser())
+        self.parser_registry.register(DBSParser())
 
     async def start(self) -> None:
         """Start the polling loop."""
@@ -123,7 +123,7 @@ class GmailPoller:
     def _mark_as_read(self, email) -> None:
         """Mark an email as read."""
         try:
-            with MailBox(self.settings.imap_host).tls(
+            with MailBox(self.settings.imap_host, port=self.settings.imap_port).login(
                 self.settings.imap_username,
                 self.settings.imap_password,
             ) as mailbox:

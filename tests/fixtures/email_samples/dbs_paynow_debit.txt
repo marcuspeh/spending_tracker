@@ -1,0 +1,10 @@
+Subject: PayNow Payment Notification
+
+From: ibanking.alert@dbs.com
+
+You have sent a PayNow payment of $25.00 to JOHN TAN on 25 June 2024 14:30.
+
+To: DBS/ POSB account ending 1234
+Transaction ID: PN2024062500001
+
+This is an automated notification from DBS.

@@ -1,0 +1,10 @@
+Subject: PayNow Received Funds Notification
+
+From: uob-noreply@uobgroup.com
+
+You have received a PayNow transfer of $80.00 from JOHN DOE on 22 May 2024 16:00.
+
+To: Your UOB account ending 5678
+Transaction ID: UOB-PN-2024052200002
+
+This is an automated notification from UOB.

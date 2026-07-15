@@ -1,7 +1,0 @@
-Subject: PayNow Payment Notification
-
-You have sent a PayNow payment of $25.00 to John on 25 June 2024 14:30.
-
-Transaction ID: PN2024062500001
-
-This is an automated notification from your bank.

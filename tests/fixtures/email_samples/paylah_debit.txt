@@ -1,7 +1,33 @@
-Subject: DBS PayLah Transaction Alert
+Subject: Fwd: Transaction Alerts
 
-You have made a payment of $8.50 at FairPrice on 25 June 2024 12:45.
+From: PayLah! Alerts <paylah.alert@dbs.com>
 
-Transaction ID: PL2024062500001
+Transaction Alerts
+Problems viewing this email? Select "always display images".
+[image: DBS]
 
-This is an automated notification from DBS PayLah.
+
+Transaction Ref: IPS-PAYLAH-FAKE-0001
+
+Dear Sir / Madam,
+We refer to your PayLah! Scan & Pay Transfer dated 13 Jul. We are pleased
+to confirm that the transaction was completed.
+
+Date & Time: 13 Jul 08:59 (SGT)
+Amount: SGD2000.00
+From: PayLah! Wallet (Mobile ending 8352)
+To: CHOCFIN PTE. LTD. - CHOCOLATE CLIENTS AC
+To view your transactions, login to your PayLah! Wallet and select
+“History” at the bottom bar of the Home page. To manage your PayLah!
+notifications, select “Settings” then “Manage Notifications”.
+
+Please call DBS hotline immediately if this was an unauthorised
+transaction.
+
+Thank you for banking with us.
+
+Yours faithfully
+DBS Bank Ltd
+
+
+This is an auto-generated message. Please do not reply to this email.

@@ -131,7 +131,7 @@ Fields:
 * user_id
 * amount (signed; negative for refunds/credits)
 * merchant
-* payment_method (enum: `MANUAL`, `PAYNOW`, `PAYLAH`, `UOB_CARD`)
+* payment_method (enum: `MANUAL`, `PAYLAH_DEBIT`, `PAYLAH_CREDIT`, `DBS_PAYNOW_DEBIT`, `DBS_PAYNOW_CREDIT`, `UOB_PAYNOW_DEBIT`, `UOB_PAYNOW_CREDIT`, `UOB_CC`, `UOB_CC_REFUND`, `DBS_CC`, `DBS_CC_REFUND`)
 * transaction_time (stored in UTC / GMT+0; presented to the user in SGT)
 * description (nullable; freeform note)
 * created_at

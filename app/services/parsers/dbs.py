@@ -7,19 +7,18 @@ from app.services.parsers.base import BaseParser, ParsedTransaction, ParserError
 from app.utils.timezone import SGT
 
 
-# Payment method enum values returned by this parser.
 _CREDIT_KEYWORDS = ("received", "incoming", "transfer from", "credited")
 _REFUND_KEYWORDS = ("refund", "reversal")
 
 
-class UOBParser(BaseParser):
-    """Parser for UOB transaction emails.
+class DBSParser(BaseParser):
+    """Parser for DBS/POSB transaction emails.
 
-    Handles two transaction types and returns bank-specific enum values:
-      - Credit card: UOB_CC (purchase) / UOB_CC_REFUND (refund)
-      - PayNow:      UOB_PAYNOW_DEBIT (sent) / UOB_PAYNOW_CREDIT (received)
-
-    Note: UOB does not offer PayLah — PayLah is DBS-only and handled by DBSParser.
+    Handles three transaction types and returns bank-specific enum values:
+      - Credit card: DBS_CC (purchase) / DBS_CC_REFUND (refund)
+      - PayNow:      DBS_PAYNOW_DEBIT (sent) / DBS_PAYNOW_CREDIT (received)
+      - PayLah:      PAYLAH_DEBIT (sent) / PAYLAH_CREDIT (received) — generic
+                     since UOB PayLah has its own enum value (UOB_PAYLAH_CREDIT).
     """
 
     def can_parse(self, email: dict[str, Any]) -> bool:
@@ -27,31 +26,40 @@ class UOBParser(BaseParser):
         body = email.get("body", "")
         from_ = email.get("from", "") or ""
         combined = f"{subject} {body} {from_}".lower()
-        # Match if UOB bank signal is present AND it's a transactional email
-        # (card/PayNow). PayLah is DBS-only, never UOB. Avoid claiming unrelated
-        # UOB marketing mail.
-        if "uob" not in combined:
+        subject_lower = subject.lower()
+        # Reject UOB-sourced emails so they go to UOBParser instead.
+        if "uob" in combined and "dbs" not in combined and "posb" not in combined:
             return False
+        # Strong DBS signals: card-alert subjects always come from DBS.
+        if "card transaction alert" in subject_lower or "card refund alert" in subject_lower:
+            return True
+        # Otherwise require both a DBS/POSB signal and a transactional signal
+        # (card/paynow/paylah) so we don't claim unrelated @dbs.com mail.
+        has_dbs = "dbs" in combined or "posb" in combined
         has_transaction_signal = (
-            "card" in combined
+            "card" in subject_lower
             or "paynow" in combined
+            or "paylah" in combined
+            or "posb" in combined
         )
-        return has_transaction_signal
+        return has_dbs and has_transaction_signal
 
     def _classify(self, body_lower: str, subject_lower: str) -> tuple[str, bool]:
-        """Return (payment_method, is_credit_negative).
-
-        is_credit_negative=True means the amount should be flipped to negative.
-        """
+        """Return (payment_method, is_credit_negative)."""
         combined_lower = f"{subject_lower} {body_lower}"
+        # PayLah — DBS PayLah uses generic PAYLAH_* (UOB has its own enum).
+        if "paylah" in combined_lower:
+            is_credit = any(kw in combined_lower for kw in _CREDIT_KEYWORDS)
+            return ("PAYLAH_CREDIT" if is_credit else "PAYLAH_DEBIT"), is_credit
+
         # PayNow
         if "paynow" in combined_lower:
             is_credit = any(kw in combined_lower for kw in _CREDIT_KEYWORDS)
-            return ("UOB_PAYNOW_CREDIT" if is_credit else "UOB_PAYNOW_DEBIT"), is_credit
+            return ("DBS_PAYNOW_CREDIT" if is_credit else "DBS_PAYNOW_DEBIT"), is_credit
 
         # Credit card
         is_refund = any(kw in combined_lower for kw in _REFUND_KEYWORDS)
-        return ("UOB_CC_REFUND" if is_refund else "UOB_CC"), is_refund
+        return ("DBS_CC_REFUND" if is_refund else "DBS_CC"), is_refund
 
     def parse(self, email: dict[str, Any]) -> ParsedTransaction:
         body = email.get("body", "")
@@ -59,30 +67,31 @@ class UOBParser(BaseParser):
         subject = email.get("subject", "")
         subject_lower = subject.lower()
 
-        # Accept "SGD 4.22", "$45.20", "S$45.20"
+        # Accept "SGD3.98", "$45.20", "S$10.00"
         amount_match = re.search(r"(?:SGD|S\$|\$)\s*([\d,]+\.?\d*)", body)
         if not amount_match:
-            raise ParserError("Missing amount in UOB email")
+            raise ParserError("Missing amount in DBS email")
 
         amount_str = amount_match.group(1).replace(",", "")
         amount = Decimal(amount_str)
 
-        # Merchant extraction — card uses "at <merchant>", PayNow uses "to <name>"
+        # Merchant: real emails use "To: APPLE.COM/BILL". Skip email-style
+        # recipients like "To: <HKMPEH@gmail.com>" from the forwarded header.
         merchant_match = re.search(
-            r"(?:at|from|to|merchant)\s+([A-Za-z0-9\s&.'-]+?)(?:\s+on|\s+\d|$)",
-            body,
-            re.IGNORECASE,
+            r"^To:\s*([^\n\r<]+)$", body, re.MULTILINE | re.IGNORECASE
         )
-        merchant = "UOB Transaction"
+        merchant = "DBS Transaction"
         if merchant_match:
             merchant = merchant_match.group(1).strip()
 
-        # Date — accept "25 June 2024", "14/07/26", "14-07-26"
+        # Date — accept "13/07/26", "13 JUL 15:30", "13 Jul 2026 15:30"
         transaction_time = datetime.now(SGT)
         date_patterns = [
-            (r"(\d{1,2}\s+\w+\s+\d{4})", ["%d %B %Y"]),
             (r"(\d{1,2}/\d{1,2}/\d{2,4})", ["%d/%m/%y", "%d/%m/%Y"]),
-            (r"(\d{1,2}-\d{1,2}-\d{2,4})", ["%d-%m-%y", "%d-%m-%Y"]),
+            (
+                r"(\d{1,2}\s+\w+\s+\d{4}\s+\d{1,2}:\d{2})",
+                ["%d %b %Y %H:%M", "%d %B %Y %H:%M"],
+            ),
         ]
         for pattern, formats in date_patterns:
             m = re.search(pattern, body)
