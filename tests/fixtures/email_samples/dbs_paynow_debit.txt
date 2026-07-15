@@ -1,10 +1,26 @@
-Subject: PayNow Payment Notification
+Subject: Fwd: Transaction Alerts
 
-From: ibanking.alert@dbs.com
+From: PayLah! Alerts <paylah.alert@dbs.com>
 
-You have sent a PayNow payment of $25.00 to JOHN TAN on 25 June 2024 14:30.
+Transaction Ref: IP-DBS-PN-FAKE-0002
 
-To: DBS/ POSB account ending 1234
-Transaction ID: PN2024062500001
+Dear Sir / Madam,
+We refer to a PayNow Transfer dated 26 Jun. We are pleased to confirm that
+the transaction was completed.
 
-This is an automated notification from DBS.
+Date & Time: 26 Jun 16:27 (SGT)
+Amount: SGD10.00
+From: PayLah! Wallet (Mobile ending 8352)
+To: JOHN DOE (Mobile ending 1625)
+To view your transactions, login to your PayLah! Wallet and select
+“History” at the bottom bar of the Home page. To manage your PayLah!
+notifications, select “Settings” then “Manage Notifications”.
+
+Please call DBS hotline immediately if this was an unauthorised transaction.
+
+Thank you for banking with us.
+
+Yours faithfully
+DBS Bank Ltd
+
+This is an auto-generated message. Please do not reply to this email.

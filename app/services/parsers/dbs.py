@@ -46,16 +46,23 @@ class DBSParser(BaseParser):
         return has_dbs and has_transaction_signal
 
     def _classify(self, body_lower: str, subject_lower: str) -> tuple[str, bool]:
-        """Return (payment_method, is_credit_negative)."""
-        combined_lower = f"{subject_lower} {body_lower}"
-        # PayLah — debit only (no PAYLAH_CREDIT; PayLah never sends incoming emails).
-        if "paylah" in combined_lower:
-            return "PAYLAH_DEBIT", False
+        """Return (payment_method, is_credit_negative).
 
-        # PayNow
+        PayNow wins over PayLah when both signals are present: some PayLah-funded
+        transfers come in as PayLah! Alerts emails but the body explicitly says
+        "PayNow Transfer" — those are PayNow debits, not PayLah.
+        """
+        combined_lower = f"{subject_lower} {body_lower}"
+
+        # PayNow first — checks body for "PayNow Transfer" / "PayNow payment" /
+        # "via PayNow" etc.
         if "paynow" in combined_lower:
             is_credit = any(kw in combined_lower for kw in _CREDIT_KEYWORDS)
             return ("DBS_PAYNOW_CREDIT" if is_credit else "DBS_PAYNOW_DEBIT"), is_credit
+
+        # PayLah — debit only (no PAYLAH_CREDIT; PayLah never sends incoming emails).
+        if "paylah" in combined_lower:
+            return "PAYLAH_DEBIT", False
 
         # Credit card
         is_refund = any(kw in combined_lower for kw in _REFUND_KEYWORDS)
