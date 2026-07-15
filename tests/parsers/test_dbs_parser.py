@@ -117,7 +117,7 @@ class TestDBSParser:
         assert result.transaction_time.month == 7
         assert result.transaction_time.day == 7
 
-    # --- PayLah (generic PAYLAH_DEBIT / PAYLAH_CREDIT) ---
+    # --- PayLah (debit only — no PAYLAH_CREDIT since PayLah doesn't send incoming emails) ---
 
     def test_parse_paylah_debit(self):
         email = self._make_email(
@@ -133,19 +133,20 @@ class TestDBSParser:
         assert result.amount == Decimal("2000.00")
         assert result.payment_method == "PAYLAH_DEBIT"
 
-    def test_parse_paylah_credit(self):
+    def test_paylah_amount_stays_positive_even_with_credit_keywords(self):
+        # PayLah does NOT send incoming emails — even if body contains "received"
+        # or "credit", the parser must NOT flip the sign or return PAYLAH_CREDIT.
         email = self._make_email(
-            subject="PayLah! - You've received a transfer",
+            subject="PayLah! Transaction",
             from_="paylah.alert@dbs.com",
             body=(
-                "Amount: SGD25.50\n"
-                "From: TAN SZE YING\n"
-                "To: Your PayLah! Wallet"
+                "You have received SGD 25.50 in your PayLah! Wallet\n"
+                "Amount: SGD25.50"
             ),
         )
         result = self.parser.parse(email)
-        assert result.amount == Decimal("-25.50")
-        assert result.payment_method == "PAYLAH_CREDIT"
+        assert result.payment_method == "PAYLAH_DEBIT"
+        assert result.amount == Decimal("25.50")
 
     # --- real polled email ---
 

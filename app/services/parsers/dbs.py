@@ -14,11 +14,12 @@ _REFUND_KEYWORDS = ("refund", "reversal")
 class DBSParser(BaseParser):
     """Parser for DBS/POSB transaction emails.
 
-    Handles three transaction types and returns bank-specific enum values:
+    Handles two transaction types and returns bank-specific enum values:
       - Credit card: DBS_CC (purchase) / DBS_CC_REFUND (refund)
       - PayNow:      DBS_PAYNOW_DEBIT (sent) / DBS_PAYNOW_CREDIT (received)
-      - PayLah:      PAYLAH_DEBIT (sent) / PAYLAH_CREDIT (received) — generic
-                     since UOB PayLah has its own enum value (UOB_PAYLAH_CREDIT).
+      - PayLah:      PAYLAH_DEBIT (sent) — only outgoing; PayLah does not
+                     send emails for incoming transfers, so there is no
+                     PAYLAH_CREDIT value.
     """
 
     def can_parse(self, email: dict[str, Any]) -> bool:
@@ -47,10 +48,9 @@ class DBSParser(BaseParser):
     def _classify(self, body_lower: str, subject_lower: str) -> tuple[str, bool]:
         """Return (payment_method, is_credit_negative)."""
         combined_lower = f"{subject_lower} {body_lower}"
-        # PayLah — DBS PayLah uses generic PAYLAH_* (UOB has its own enum).
+        # PayLah — debit only (no PAYLAH_CREDIT; PayLah never sends incoming emails).
         if "paylah" in combined_lower:
-            is_credit = any(kw in combined_lower for kw in _CREDIT_KEYWORDS)
-            return ("PAYLAH_CREDIT" if is_credit else "PAYLAH_DEBIT"), is_credit
+            return "PAYLAH_DEBIT", False
 
         # PayNow
         if "paynow" in combined_lower:
