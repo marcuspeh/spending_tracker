@@ -55,9 +55,24 @@ class EmailIngestionService:
             await self.imported_email_repo.insert(message_id, ImportStatus.FAILED, "PARSE_ERROR")
             return ImportStatus.FAILED
 
-        # Resolve ownership via forwarder email
-        forwarder_email = email.get("from", "")
-        user_email = await self.user_email_repo.find_by_email(forwarder_email)
+        # Resolve ownership via any sender/recipient address. For forwarded
+        # emails the parser mailbox will appear in `to`/`cc`, and the
+        # forwarder's address (X-Forwarded-For, or the original To for
+        # Gmail manual forwards) may appear in any of the three fields.
+        candidate_emails: list[str] = []
+        for field in ("from", "to", "cc"):
+            value = email.get(field)
+            if isinstance(value, str):
+                candidate_emails.append(value)
+            elif isinstance(value, (list, tuple)):
+                candidate_emails.extend(v for v in value if v)
+
+        user_email = None
+        for candidate in candidate_emails:
+            user_email = await self.user_email_repo.find_by_email(candidate)
+            if user_email:
+                break
+
         if not user_email:
             # No matching user email - FAILED
             await self.imported_email_repo.insert(message_id, ImportStatus.FAILED, "UNKNOWN_FORWARDER")

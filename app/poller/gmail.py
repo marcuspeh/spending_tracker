@@ -94,7 +94,7 @@ class GmailPoller:
 
     async def _process_email(self, email) -> None:
         """Process a single email."""
-        message_id = email.uid or email.message_id
+        message_id = email.uid or (email.obj["Message-ID"] if email.obj else "")
 
         logger.debug(
             "email_fetched",
@@ -108,6 +108,8 @@ class GmailPoller:
             "subject": email.subject,
             "body": email.text or "",
             "from": email.from_,
+            "to": list(email.to),
+            "cc": list(email.cc),
         }
 
         try:

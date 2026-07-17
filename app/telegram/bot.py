@@ -59,6 +59,7 @@ class TelegramBot:
 
         await self._app.initialize()
         await self._app.start()
+        await self._app.updater.start_polling()
         self._running = True
 
         logger.info("telegram_bot_started")
@@ -71,6 +72,7 @@ class TelegramBot:
         """Stop the Telegram bot."""
         self._running = False
         if self._app:
+            await self._app.updater.stop_polling()
             await self._app.stop()
             await self._app.shutdown()
         logger.info("telegram_bot_stopped")
