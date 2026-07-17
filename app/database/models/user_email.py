@@ -6,8 +6,8 @@ class UserEmail(Model):
     id = fields.IntField(pk=True, auto_now_add=True)
     user_id = fields.IntField()
     email = fields.CharField(max_length=320, unique=True)
-    created_at = fields.DatetimeField(auto_now_add=True)
-    updated_at = fields.DatetimeField(auto_now=True)
+    created_at = fields.DatetimeField(db_default=fields.Now())
+    updated_at = fields.DatetimeField(db_default=fields.Now())
     deleted_at = fields.DatetimeField(null=True)
 
     class Meta:

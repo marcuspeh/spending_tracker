@@ -9,7 +9,7 @@ class ImportedEmail(Model):
     message_id = fields.CharField(max_length=191, unique=True)
     status = fields.CharEnumField(ImportStatus)
     reason = fields.CharField(max_length=255, null=True)
-    created_at = fields.DatetimeField(auto_now_add=True)
+    created_at = fields.DatetimeField(db_default=fields.Now())
 
     class Meta:
         table = "imported_emails"

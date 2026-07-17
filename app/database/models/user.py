@@ -8,8 +8,8 @@ class User(Model):
     telegram_username = fields.CharField(max_length=255, null=True)
     name = fields.CharField(max_length=255)
     active = fields.BooleanField(default=True)
-    created_at = fields.DatetimeField(auto_now_add=True)
-    updated_at = fields.DatetimeField(auto_now=True)
+    created_at = fields.DatetimeField(db_default=fields.Now())
+    updated_at = fields.DatetimeField(db_default=fields.Now())
     deleted_at = fields.DatetimeField(null=True)
 
     class Meta:

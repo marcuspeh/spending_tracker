@@ -12,8 +12,8 @@ class Transaction(Model):
     payment_method = fields.CharEnumField(PaymentMethod)
     description = fields.TextField(null=True)
     transaction_time = fields.DatetimeField()
-    created_at = fields.DatetimeField(auto_now_add=True)
-    updated_at = fields.DatetimeField(auto_now=True)
+    created_at = fields.DatetimeField(db_default=fields.Now())
+    updated_at = fields.DatetimeField(db_default=fields.Now())
     deleted_at = fields.DatetimeField(null=True)
 
     class Meta:
