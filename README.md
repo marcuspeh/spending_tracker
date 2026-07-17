@@ -31,7 +31,11 @@ Edit `.env` with your settings:
 
 ```env
 TIMEZONE=Asia/Singapore
-DATABASE_URL=mysql://expense_user:expense_password@mysql:3306/expense_tracker
+MYSQL_HOST=mysql
+MYSQL_PORT=3306
+MYSQL_USER=expense_user
+MYSQL_PASSWORD=expense_password
+MYSQL_DATABASE=expense_tracker
 TELEGRAM_BOT_TOKEN=123456789:ABCdefGHIjklMNOpqrsTUVwxyz
 IMAP_HOST=imap.gmail.com
 IMAP_PORT=993
@@ -199,7 +203,11 @@ GRANT ALL ON expense_tracker.* TO 'expense_user'@'%';
 
 ```env
 TIMEZONE=Asia/Singapore
-DATABASE_URL=mysql://expense_user:expense_password@127.0.0.1:3306/expense_tracker
+MYSQL_HOST=127.0.0.1
+MYSQL_PORT=3306
+MYSQL_USER=expense_user
+MYSQL_PASSWORD=expense_password
+MYSQL_DATABASE=expense_tracker
 TELEGRAM_BOT_TOKEN=your-bot-token
 IMAP_HOST=imap.gmail.com
 IMAP_PORT=993

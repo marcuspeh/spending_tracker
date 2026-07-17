@@ -3,7 +3,7 @@ from tortoise import Tortoise
 from app.config.settings import get_settings
 
 TORTOISE_ORM = {
-    "connections": {"default": get_settings().database_url.replace("mysql+pymysql", "mysql")},
+    "connections": {"default": get_settings().database_url},
     "apps": {
         "app": {
             "models": [

@@ -16,8 +16,12 @@ class Settings(BaseSettings):
     # Timezone
     timezone: str = Field(default="Asia/Singapore")
 
-    # Database
-    database_url: str = Field(default="")
+    # Database (individual MySQL fields)
+    mysql_host: str = Field(default="mysql")
+    mysql_port: int = Field(default=3306)
+    mysql_user: str = Field(default="")
+    mysql_password: str = Field(default="")
+    mysql_database: str = Field(default="")
 
     # Telegram
     telegram_bot_token: str = Field(default="")
@@ -37,12 +41,12 @@ class Settings(BaseSettings):
     # Logging
     log_level: str = Field(default="INFO")
 
-    @field_validator("database_url")
-    @classmethod
-    def database_url_required(cls, v: str) -> str:
-        if not v:
-            raise ValueError("DATABASE_URL is required")
-        return v
+    @property
+    def database_url(self) -> str:
+        return (
+            f"mysql://{self.mysql_user}:{self.mysql_password}"
+            f"@{self.mysql_host}:{self.mysql_port}/{self.mysql_database}"
+        )
 
     @field_validator("telegram_bot_token")
     @classmethod
