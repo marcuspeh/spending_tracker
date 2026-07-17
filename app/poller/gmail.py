@@ -74,12 +74,10 @@ class GmailPoller:
         logger.debug("poll_start")
 
         def fetch_unseen():
-            with MailBox(self.settings.imap_host).tls(
-                self.settings.imap_username,
-                self.settings.imap_password,
-            ) as mailbox:
-                # Fetch unseen, no new messages after (ALL)
-                return mailbox.fetch(AND(seen=False), limit=100)
+            with MailBox(self.settings.imap_host, port=self.settings.imap_port) as mailbox:
+                mailbox.login(self.settings.imap_username, self.settings.imap_password)
+                # Fetch unseen and materialize to list before connection closes
+                return list(mailbox.fetch(AND(seen=False), limit=100))
 
         try:
             emails = await asyncio.to_thread(fetch_unseen)

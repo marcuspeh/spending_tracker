@@ -44,12 +44,7 @@ class Settings(BaseSettings):
 
     @property
     def database_url(self) -> str:
-        user = quote_plus(self.mysql_user)
-        password = quote_plus(self.mysql_password)
-        return (
-            f"mysql://{user}:{password}"
-            f"@{self.mysql_host}:{self.mysql_port}/{self.mysql_database}"
-        )
+        return f"mysql://{self.mysql_user}:{self.mysql_password}@{self.mysql_host}:{self.mysql_port}/{self.mysql_database}"
 
     @field_validator("telegram_bot_token")
     @classmethod

@@ -232,11 +232,4 @@ INSERT INTO user_emails (user_id, email) VALUES (1, 'your-forwarding-email@gmail
 ```bash
 # Full application (bot + poller + health server)
 uv run python -m app.main
-
-# Poller only (no Telegram, no DB required)
-uv run python scripts/test_poller.py
-
-# Parser smoke test
-uv run python scripts/test_fixtures.py
-uv run python scripts/run_parsers_on_polled.py
 ```
