@@ -137,6 +137,6 @@ class GmailPoller:
                 self.settings.imap_username,
                 self.settings.imap_password,
             ) as mailbox:
-                mailbox.seen(email.uid, True)
+                mailbox.flag(email.uid, ["\\Seen"], True)
         except Exception as e:
             logger.error("mark_read_error", error=str(e))

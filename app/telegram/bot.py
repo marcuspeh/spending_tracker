@@ -46,6 +46,7 @@ class TelegramBot:
         self._app.add_handler(CommandHandler("help", help_handler))
         self._app.add_handler(CommandHandler("ping", ping_handler))
         self._app.add_handler(CommandHandler("latest", latest_handler))
+        
         self._app.add_handler(CommandHandler("today", today_handler))
         self._app.add_handler(CommandHandler("week", week_handler))
         self._app.add_handler(CommandHandler("thismonth", month_handler))
