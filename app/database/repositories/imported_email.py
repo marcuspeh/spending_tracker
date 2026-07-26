@@ -1,3 +1,5 @@
+from tortoise.exceptions import IntegrityError
+
 from app.database.enums import ImportStatus
 from app.database.models.imported_email import ImportedEmail
 
@@ -14,10 +16,18 @@ class ImportedEmailRepository:
         message_id: str,
         status: ImportStatus,
         reason: str | None = None,
-    ) -> ImportedEmail:
-        imported_email = await ImportedEmail.create(
-            message_id=message_id,
-            status=status,
-            reason=reason,
-        )
-        return imported_email
+    ) -> ImportedEmail | None:
+        """Insert an ImportedEmail record.
+
+        Returns None if a record with this message_id already exists (the
+        unique constraint on message_id will raise IntegrityError). Callers
+        should treat this as "already seen" rather than crashing.
+        """
+        try:
+            return await ImportedEmail.create(
+                message_id=message_id,
+                status=status,
+                reason=reason,
+            )
+        except IntegrityError:
+            return None

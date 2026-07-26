@@ -77,42 +77,19 @@ class TransactionRepository:
         transaction.deleted_at = datetime.now(timezone.utc)
         await transaction.save()
 
-    async def sum_today(self, user_id: int, sgt_start: datetime, sgt_end: datetime) -> float:
+    async def sum_amount(
+        self,
+        user_id: int,
+        start: datetime,
+        end: datetime,
+    ) -> float:
+        """Sum signed amounts in [start, end] (UTC). Caller passes SGT
+        windows converted to UTC via app.utils.timezone.sgt_to_utc()."""
         result = await Transaction.filter(
             user_id=user_id,
             deleted_at__isnull=True,
-            transaction_time__gte=sgt_start,
-            transaction_time__lte=sgt_end
-        ).annotate(total=Coalesce(Sum("amount"), 0)).values_list("total", flat=True)
-        total = result[0] if result else 0
-        return float(total) if total else 0.0
-
-    async def sum_week(self, user_id: int, week_start: datetime, week_end: datetime) -> float:
-        result = await Transaction.filter(
-            user_id=user_id,
-            deleted_at__isnull=True,
-            transaction_time__gte=week_start,
-            transaction_time__lte=week_end
-        ).annotate(total=Coalesce(Sum("amount"), 0)).values_list("total", flat=True)
-        total = result[0] if result else 0
-        return float(total) if total else 0.0
-
-    async def sum_month(self, user_id: int, month_start: datetime, month_end: datetime) -> float:
-        result = await Transaction.filter(
-            user_id=user_id,
-            deleted_at__isnull=True,
-            transaction_time__gte=month_start,
-            transaction_time__lte=month_end
-        ).annotate(total=Coalesce(Sum("amount"), 0)).values_list("total", flat=True)
-        total = result[0] if result else 0
-        return float(total) if total else 0.0
-
-    async def sum_range(self, user_id: int, start_date: datetime, end_date: datetime) -> float:
-        result = await Transaction.filter(
-            user_id=user_id,
-            deleted_at__isnull=True,
-            transaction_time__gte=start_date,
-            transaction_time__lte=end_date
+            transaction_time__gte=start,
+            transaction_time__lte=end,
         ).annotate(total=Coalesce(Sum("amount"), 0)).values_list("total", flat=True)
         total = result[0] if result else 0
         return float(total) if total else 0.0

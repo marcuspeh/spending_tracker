@@ -3,7 +3,7 @@ import enum
 
 class PaymentMethod(str, enum.Enum):
     MANUAL = "MANUAL"
-    
+
     # DBS PayLah — debit only; PayLah does not send emails for incoming transfers
     PAYLAH_DEBIT = "PAYLAH_DEBIT"
 

@@ -38,13 +38,21 @@ class Settings(BaseSettings):
 
     # Health server
     health_port: int = Field(default=8080)
+    health_host: str = Field(default="127.0.0.1")
 
     # Logging
     log_level: str = Field(default="INFO")
 
     @property
     def database_url(self) -> str:
-        return f"mysql://{self.mysql_user}:{self.mysql_password}@{self.mysql_host}:{self.mysql_port}/{self.mysql_database}"
+        # URL-encode credentials so passwords containing @, :, /, etc. don't
+        # break the DSN.
+        user = quote_plus(self.mysql_user)
+        password = quote_plus(self.mysql_password)
+        return (
+            f"mysql://{user}:{password}@{self.mysql_host}"
+            f":{self.mysql_port}/{self.mysql_database}"
+        )
 
     @field_validator("telegram_bot_token")
     @classmethod
