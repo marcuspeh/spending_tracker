@@ -47,9 +47,9 @@ async def start_health_server(bot, poller) -> web.AppRunner:
 
     runner = web.AppRunner(app)
     await runner.setup()
-    site = web.TCPSite(runner, host="0.0.0.0", port=settings.health_port)
+    site = web.TCPSite(runner, host=settings.health_host, port=settings.health_port)
     await site.start()
-    logger.info("health_server_started", port=settings.health_port)
+    logger.info("health_server_started", host=settings.health_host, port=settings.health_port)
     return runner
 
 

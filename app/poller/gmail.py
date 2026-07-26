@@ -15,6 +15,7 @@ from app.services.parsers import (
     UOBCCParser,
     UOBPayNowParser,
 )
+from app.utils.html import strip_html
 
 logger = structlog.get_logger()
 
@@ -94,7 +95,16 @@ class GmailPoller:
 
     async def _process_email(self, email) -> None:
         """Process a single email."""
-        message_id = email.uid or (email.obj["Message-ID"] if email.obj else "")
+        # Use the IMAP UID as the dedup key. email.obj is usually None with
+        # imap_tools unless you ask for raw, so the Message-ID fallback
+        # almost never fires — leading to many empty-string message_ids
+        # colliding on the unique constraint.
+        message_id = email.uid or ""
+        if not message_id:
+            logger.warning("email_no_uid", subject=email.subject)
+
+            await asyncio.to_thread(self._mark_as_read, email)
+            return
 
         logger.debug(
             "email_fetched",
@@ -102,11 +112,11 @@ class GmailPoller:
             subject=email.subject,
         )
 
-        # Convert email to dict format
+        body = email.text or (strip_html(email.html) if email.html else "") or ""
         email_dict = {
             "message_id": message_id,
             "subject": email.subject,
-            "body": email.text or "",
+            "body": body,
             "from": email.from_,
             "to": list(email.to),
             "cc": list(email.cc),
@@ -115,13 +125,12 @@ class GmailPoller:
         try:
             service = EmailIngestionService(self.parser_registry)
             status = await service.process_email(email_dict)
-
-            # Handle mark-as-read logic
-            if status == ImportStatus.SUCCESS:
+            if status in (ImportStatus.SUCCESS, ImportStatus.SKIPPED, ImportStatus.FAILED):
                 await asyncio.to_thread(self._mark_as_read, email)
+
+            if status == ImportStatus.SUCCESS:
                 logger.info("email_processed", message_id=message_id, status=status.value)
             elif status == ImportStatus.FAILED:
-                # Check if it's UNKNOWN_FORWARDER (needs second encounter to mark read)
                 logger.warning("email_failed", message_id=message_id, status=status.value)
             else:  # SKIPPED
                 logger.info("email_skipped", message_id=message_id)
@@ -131,6 +140,7 @@ class GmailPoller:
 
         except Exception as e:
             logger.error("email_error", message_id=message_id, error=str(e))
+            await asyncio.to_thread(self._mark_as_read, email)
 
     def _mark_as_read(self, email) -> None:
         """Mark an email as read."""
