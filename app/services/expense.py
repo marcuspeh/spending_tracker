@@ -33,9 +33,7 @@ class ExpenseService:
             raise ValueError("Merchant is required")
 
         amount_decimal = Decimal(str(amount))
-        # Convert SGT to UTC for storage
         transaction_time_utc = sgt_to_utc(transaction_time)
-
         return await self.transaction_repo.insert(
             user_id=user_id,
             amount=float(amount_decimal),
@@ -50,6 +48,7 @@ class ExpenseService:
         transaction = await self.transaction_repo.get_by_id_for_user(transaction_id, user_id)
         if not transaction:
             return False
+        
         await self.transaction_repo.soft_delete(transaction)
         return True
 
@@ -69,11 +68,9 @@ class ExpenseService:
         if not transaction:
             return None
 
-        # Convert value based on field type
         if field == "amount":
             value = float(Decimal(str(value)))
         elif field == "transaction_time":
-            # Parse date string if needed
             if isinstance(value, str):
                 value = parse_date(value)
             value = sgt_to_utc(value)
@@ -88,17 +85,17 @@ class ExpenseService:
     async def get_today_spending(self, user_id: int) -> float:
         """Get today's total spending (signed, including refunds)."""
         start, end = get_today_window()
-        return await self.transaction_repo.sum_today(user_id, start, end)
+        return await self.transaction_repo.sum_amount(user_id, start, end)
 
     async def get_week_spending(self, user_id: int) -> float:
         """Get this week's total spending (signed, including refunds)."""
         start, end = get_week_window()
-        return await self.transaction_repo.sum_week(user_id, start, end)
+        return await self.transaction_repo.sum_amount(user_id, start, end)
 
     async def get_month_spending(self, user_id: int) -> float:
         """Get this month's total spending (signed, including refunds)."""
         start, end = get_month_window()
-        return await self.transaction_repo.sum_month(user_id, start, end)
+        return await self.transaction_repo.sum_amount(user_id, start, end)
 
     async def search_transactions(self, user_id: int, merchant_substring: str) -> list[Transaction]:
         """Search transactions by merchant name (case-insensitive)."""

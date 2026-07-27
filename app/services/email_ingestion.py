@@ -31,36 +31,36 @@ class EmailIngestionService:
             ImportStatus indicating the result of processing.
         """
         message_id = email.get("message_id", "")
-
-        # Check for duplicate
         if await self.imported_email_repo.exists_by_message_id(message_id):
             existing = await self.imported_email_repo.get_by_message_id(message_id)
             if existing and existing.status == ImportStatus.FAILED and existing.reason == "UNKNOWN_FORWARDER":
-                # Re-encountering an unknown forwarder - mark as seen but don't reprocess
                 return ImportStatus.FAILED
             return existing.status if existing else ImportStatus.SKIPPED
 
-        # Try to find a parser
         parser = self.parser_registry.find_parser(email)
         if parser is None:
-            # No parser matched - SKIPPED
             await self.imported_email_repo.insert(message_id, ImportStatus.SKIPPED)
             return ImportStatus.SKIPPED
 
-        # Try to parse
         try:
             parsed = parser.parse(email)
         except ParserError:
-            # Parser matched but failed - FAILED
             await self.imported_email_repo.insert(message_id, ImportStatus.FAILED, "PARSE_ERROR")
             return ImportStatus.FAILED
 
-        # Resolve ownership via any sender/recipient address. For forwarded
-        # emails the parser mailbox will appear in `to`/`cc`, and the
-        # forwarder's address (X-Forwarded-For, or the original To for
-        # Gmail manual forwards) may appear in any of the three fields.
+
+        if parsed.payment_method not in PaymentMethod._value2member_map_:
+            await self.imported_email_repo.insert(message_id, ImportStatus.FAILED, "UNKNOWN_PAYMENT_METHOD")
+            return ImportStatus.FAILED
+
+        # Resolve ownership. Trust only `to`/`cc` — these are the addresses
+        # the email was actually delivered to. `from` is the bank's domain
+        # and is not user-controlled, but it's also not authoritative for
+        # ownership, so we ignore it. (SMTP headers are spoofable; trusting
+        # them would let an attacker attribute their transaction to any
+        # user that owns the spoofed address.)
         candidate_emails: list[str] = []
-        for field in ("from", "to", "cc"):
+        for field in ("to", "cc"):
             value = email.get(field)
             if isinstance(value, str):
                 candidate_emails.append(value)
@@ -74,14 +74,11 @@ class EmailIngestionService:
                 break
 
         if not user_email:
-            # No matching user email - FAILED
             await self.imported_email_repo.insert(message_id, ImportStatus.FAILED, "UNKNOWN_FORWARDER")
             return ImportStatus.FAILED
 
-        # Insert transaction
         payment_method = PaymentMethod(parsed.payment_method)
         transaction_time_utc = sgt_to_utc(parsed.transaction_time)
-
         await self.transaction_repo.insert(
             user_id=user_email.user_id,
             amount=float(parsed.amount),
@@ -91,6 +88,5 @@ class EmailIngestionService:
             description=parsed.description,
         )
 
-        # Record successful import
         await self.imported_email_repo.insert(message_id, ImportStatus.SUCCESS)
         return ImportStatus.SUCCESS
