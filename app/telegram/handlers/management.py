@@ -1,3 +1,4 @@
+from datetime import datetime
 from decimal import Decimal
 
 from telegram import Update
@@ -12,20 +13,27 @@ from app.utils.timezone import now_sgt, parse_date, utc_to_sgt
 
 
 async def add_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """Handle /add <amount> <merchant> [description] [date] command."""
+    """Handle /add <amount> <merchant> [description...] [--date YYYY-MM-DD] command."""
     if not await auth_handler(update, context):
         return
 
     args = context.args
     if len(args) < 2:
         await update.message.reply_text(
-            "Usage: /add <amount> <merchant> [description] [date]\n"
-            "Example: /add 25.50 Lunch at restaurant\n"
-            "Note: Use negative amount for refunds (e.g., -10.00)"
+            "Usage: /add <amount> <merchant> [description...] [--date YYYY-MM-DD]\n"
+            "Example: /add 25.50 Lunch\n"
+            "Example: /add 25.50 Lunch \"with colleagues\" --date 2024-12-25\n"
+            "Note: Use a negative amount for refunds (e.g., -10.00)."
         )
         return
 
     chat_id = update.effective_chat.id
+
+    if len(args) < 2:
+        await update.message.reply_text(
+            "Usage: /add <amount> <merchant> [description...] [--date YYYY-MM-DD]"
+        )
+        return
 
     # Parse amount (keep sign as entered)
     try:
@@ -34,23 +42,21 @@ async def add_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
         await update.message.reply_text("Invalid amount. Please enter a number.")
         return
 
-    merchant = args[1]
-    description = None
-    transaction_date = None
-
-    if len(args) > 2:
-        # Check if third arg is a date
+    transaction_date: datetime | None = None
+    if len(args) >= 2 and args[-2] == "--date":
         try:
-            transaction_date = parse_date(args[2])
-            if len(args) > 3:
-                description = " ".join(args[3:])
+            transaction_date = parse_date(args[-1])
         except ValueError:
-            description = " ".join(args[2:])
-            transaction_date = None
-
+            await update.message.reply_text(
+                "Invalid date. Use YYYY-MM-DD after --date, e.g. --date 2024-12-25"
+            )
+            return
+        args = args[:-2]
     if transaction_date is None:
         transaction_date = now_sgt()
 
+    merchant = args[1]
+    description = " ".join(args[2:]) if len(args) > 2 else None
     user_repo = UserRepository()
     user = await user_repo.get_by_chat_id(chat_id)
     if not user:
@@ -133,11 +139,7 @@ async def delete_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
         await update.message.reply_text("Invalid transaction ID.")
         return
 
-    # Store pending delete
-    if chat_id not in _pending_deletes:
-        _pending_deletes[chat_id] = []
-    _pending_deletes[chat_id].append(txn_id)
-
+    _pending_deletes.setdefault(chat_id, set()).add(txn_id)
     await update.message.reply_text(
         f"To confirm deletion of transaction {txn_id}, send /confirm {txn_id}"
     )
@@ -153,16 +155,14 @@ async def confirm_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
         await update.message.reply_text("Usage: /confirm <id>")
         return
 
-    chat_id = update.effective_chat.id
-
     try:
         txn_id = int(args[0])
     except ValueError:
         await update.message.reply_text("Invalid transaction ID.")
         return
 
-    # Check if this delete was pending
-    pending = _pending_deletes.get(chat_id, [])
+    chat_id = update.effective_chat.id
+    pending = _pending_deletes.get(chat_id, set())
     if txn_id not in pending:
         await update.message.reply_text(
             f"No pending delete for transaction {txn_id}. Use /delete {txn_id} first."
@@ -177,10 +177,11 @@ async def confirm_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
 
     expense_service = ExpenseService()
     success = await expense_service.delete_transaction(user.id, txn_id)
-
     if success:
-        # Remove from pending
-        _pending_deletes[chat_id].remove(txn_id)
+        _pending_deletes[chat_id].discard(txn_id)
+        if not _pending_deletes[chat_id]:
+            _pending_deletes.pop(chat_id, None)
         await update.message.reply_text(f"Transaction {txn_id} deleted.")
-    else:
-        await update.message.reply_text("Transaction not found or not owned by you.")
+        return
+    
+    await update.message.reply_text("Transaction not found or not owned by you.")

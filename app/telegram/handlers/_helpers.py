@@ -3,7 +3,8 @@ from typing import Any
 from app.utils.timezone import utc_to_sgt
 
 # In-memory state for two-step delete confirmation, keyed by chat_id.
-_pending_deletes: dict[int, list[int]] = {}
+# Sets (not lists) so /delete 5 repeated 100 times stays a single entry.
+_pending_deletes: dict[int, set[int]] = {}
 
 
 def format_amount(amount: float) -> str:
