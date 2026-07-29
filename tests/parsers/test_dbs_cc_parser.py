@@ -59,7 +59,7 @@ class TestDBSCCParser:
         result = self.parser.parse(email)
         assert result.amount == Decimal("3.98")
         assert result.payment_method == "DBS_CC"
-        assert "APPLE" in result.merchant
+        assert result.merchant == "APPLE.COM/BILL"
 
     def test_parse_refund(self):
         email = self._make_email(
@@ -95,4 +95,14 @@ class TestDBSCCParser:
         result = self.parser.parse(email)
         assert result.amount == Decimal("3.98")
         assert result.payment_method == "DBS_CC"
-        assert "APPLE" in result.merchant
+        assert result.merchant == "APPLE.COM/BILL"
+
+    # --- can_parse negative tests: substring collisions ---
+
+    def test_cannot_parse_substring_collision_cardiology(self):
+        email = self._make_email(
+            subject="Cardiology appointment reminder",
+            body="Your cardiology visit is scheduled.",
+            from_="clinic@example.com",
+        )
+        assert self.parser.can_parse(email) is False
