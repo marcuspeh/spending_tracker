@@ -46,6 +46,10 @@ def email_to_text(email) -> str:
         "",
         f"From: {email.from_}",
         "",
+        f"To: {email.to}",
+        "",
+        f"Date: {email.date}",
+        "",
         f"{body}",
     ]
     return "\n".join(lines)
@@ -57,7 +61,7 @@ def main():
         "--limit", "-n", type=int, default=10, help="Number of emails to fetch (default: 10)"
     )
     parser.add_argument(
-        "--output", "-o", type=str, default="tests/fixtures/email_samples", help="Output directory"
+        "--output", "-o", type=str, default="email_samples", help="Output directory"
     )
     parser.add_argument(
         "--dry-run", action="store_true", help="Print emails without saving"
