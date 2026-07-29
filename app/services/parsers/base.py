@@ -62,20 +62,33 @@ class BankParser(BaseParser):
     Concrete subclasses define:
       - `name`: short identifier (e.g. "UOB_CC")
       - `can_parse(email)`: True iff this parser claims the email
-      - `_payment_methods`: enum values this parser may return
-      - `_merchant_pattern`: regex used to extract the merchant from body
+      - `_debit_method`, `_credit_method` (optional), `_refund_method` (optional):
+        payment-method strings to return based on the transaction direction.
+      - `_merchant_pattern`: regex used to extract the merchant from body.
 
     Optional overrides:
-      - `_extract_amount(body) -> Decimal | None`: default uses the shared
-        amount regex.
-      - `_extract_date(body) -> datetime | None`: default tries a list of
-        common formats.
+      - `_extract_amount(body) -> Decimal`: default uses the shared regex.
+      - `_extract_date(body) -> datetime`: default tries a list of common formats.
+      - `_force_positive()`: return True for channels (e.g. PayLah) where
+        outgoing-only means we should never sign-flip the amount.
     """
 
     # Subclasses set these.
     name: str = ""
-    _payment_methods: tuple[str, ...] = ()
+    _debit_method: str = ""
+    _credit_method: str = ""  # empty means this parser never returns credits
+    _refund_method: str = ""  # empty means this parser never returns refunds
     _merchant_pattern: str = r"(?:at|from|to|merchant)\s+([A-Za-z0-9\s&.'-]+?)(?:\s+on|\s+\d|$)"
+
+    # Back-compat: subclasses/tests may still inspect this tuple.
+    @property
+    def _payment_methods(self) -> tuple[str, ...]:
+        methods = [self._debit_method]
+        if self._credit_method:
+            methods.append(self._credit_method)
+        if self._refund_method:
+            methods.append(self._refund_method)
+        return tuple(m for m in methods if m)
 
     # Keywords that mark an incoming/credit transaction.
     _CREDIT_KEYWORDS: tuple[str, ...] = (
@@ -91,13 +104,21 @@ class BankParser(BaseParser):
     # ---------- helpers subclasses can reuse ----------
 
     def _combined_lower(self, email: dict[str, Any]) -> str:
-        return f"{email.get('subject', '')} {email.get('body', '')}".lower()
+        subject = email.get("subject", "") or ""
+        body = email.get("body", "") or ""
+        from_ = email.get("from", "") or ""
+        return f"{subject} {body} {from_}".lower()
 
     def _is_credit(self, body_lower: str) -> bool:
         return any(kw in body_lower for kw in self._CREDIT_KEYWORDS)
 
     def _is_refund(self, body_lower: str) -> bool:
         return any(kw in body_lower for kw in self._REFUND_KEYWORDS)
+
+    def _force_positive(self) -> bool:
+        """Override to True for channels that only send outgoing notifications
+        (e.g. PayLah). When True, refund/credit detection is ignored."""
+        return False
 
     def _extract_amount(self, body: str) -> Decimal:
         """Find the first SGD/S$/$ amount in the body. Raises ParserError."""
@@ -143,3 +164,30 @@ class BankParser(BaseParser):
                 except ValueError:
                     continue
         return now
+
+    # ---------- shared parse() ----------
+
+    def parse(self, email: dict[str, Any]) -> ParsedTransaction:
+        body = email.get("body", "")
+        body_lower = body.lower()
+
+        amount = self._extract_amount(body)
+
+        if self._force_positive():
+            method = self._debit_method
+            amount = abs(amount)
+        elif self._refund_method and self._is_refund(body_lower):
+            amount = -abs(amount)
+            method = self._refund_method
+        elif self._credit_method and self._is_credit(body_lower):
+            amount = -abs(amount)
+            method = self._credit_method
+        else:
+            method = self._debit_method
+
+        return ParsedTransaction(
+            amount=amount,
+            merchant=self._extract_merchant(body),
+            payment_method=method,
+            transaction_time=self._extract_date(body),
+        )
