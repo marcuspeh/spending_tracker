@@ -1,6 +1,7 @@
 """End-to-end parser tests driven by real .txt email fixtures.
 
-Each fixture in `tests/fixtures/email_samples/` follows a simple format:
+Each fixture in `tests/fixtures/email_samples/<parser>/` follows a simple format::
+
     Subject: <subject line>
     <blank line>
     From: <from address>
@@ -18,10 +19,12 @@ from pathlib import Path
 
 import pytest
 
+from app.services.parsers.dbs_bank import DBSBankParser
 from app.services.parsers.dbs_cc import DBSCCParser
 from app.services.parsers.dbs_paynow import DBSPayNowParser
 from app.services.parsers.paylah import PayLahParser
 from app.services.parsers.registry import ParserRegistry
+from app.services.parsers.uob_bank import UOBBankParser
 from app.services.parsers.uob_cc import UOBCCParser
 from app.services.parsers.uob_paynow import UOBPayNowParser
 from app.utils.timezone import SGT
@@ -83,6 +86,13 @@ def _make_registry() -> ParserRegistry:
     registry = ParserRegistry()
     registry.register(UOBCCParser())
     registry.register(UOBPayNowParser())
+    # UOBBankParser must come before UOBCC — both can match "UOB" traffic,
+    # but the funds-transfer body shape is the more specific signal.
+    registry.register(UOBBankParser())
+    # DBSBankParser must come before DBSCC — both can match "POSB" traffic,
+    # but the bank-transfer body shape (`Funds Transfer to Other DBS/POSB
+    # account`, `via FAST`) is the more specific signal.
+    registry.register(DBSBankParser())
     registry.register(DBSCCParser())
     registry.register(DBSPayNowParser())
     registry.register(PayLahParser())
@@ -94,102 +104,96 @@ def registry() -> ParserRegistry:
     return _make_registry()
 
 
-# --- shouldParse fixtures: parser name -> expected output ------------------
+# --- shouldParse fixtures: filename -> expected output --------------------
 
 PARSE_CASES = [
     pytest.param(
-        "dbs_cc_direct.txt",
+        "dbs_cc/Card Transaction Alert.txt",
         Decimal("2.15"),
         "DBS_CC",
-        datetime(2026, 7, 16, 0, 0, tzinfo=SGT),
+        datetime(2026, 7, 16, 12, 39, tzinfo=SGT),
         id="dbs_cc_direct",
     ),
     pytest.param(
-        "dbs_cc_fwd.txt",
-        Decimal("3.98"),
-        "DBS_CC",
-        datetime(2026, 7, 13, 0, 0, tzinfo=SGT),
-        id="dbs_cc_fwd",
+        "dbs_bank/digibank Alerts - You've received a transfer.txt",
+        Decimal("-10.35"),
+        "DBS_BANK_TRANSFER_CREDIT",
+        datetime(2026, 6, 3, 0, 13, tzinfo=SGT),
+        id="dbs_bank_transfer_credit",
     ),
     pytest.param(
-        "uob_cc_direct.txt",
+        "dbs_bank/iBanking Alerts.txt",
+        Decimal("1.00"),
+        "DBS_BANK_TRANSFER_DEBIT",
+        datetime(2026, 7, 31, 0, 13, tzinfo=SGT),
+        id="dbs_bank_transfer_debit",
+    ),
+    pytest.param(
+        "dbs_paynow/iBanking Alerts.txt",
+        Decimal("1.00"),
+        "DBS_PAYNOW_DEBIT",
+        # Body: "Date & Time: 31 Jul 00:13 (SGT)" with year patched from the
+        # email's "Date: 2026-07-30 16:13:34+00:00" header → 2026-07-31.
+        datetime(2026, 7, 31, 0, 13, tzinfo=SGT),
+        id="dbs_paynow_debit",
+    ),
+    pytest.param(
+        "dbs_paynow/digibank Alerts - Youve received a transfer.txt",
+        Decimal("-0.50"),
+        "DBS_PAYNOW_CREDIT",
+        datetime(2026, 7, 31, 0, 11, tzinfo=SGT),
+        id="dbs_paynow_credit",
+    ),
+    pytest.param(
+        "paylah/Transaction Alerts.txt",
+        Decimal("2000.00"),
+        "PAYLAH_DEBIT",
+        # Year patched from the email's "Date: 2026-07-16 ..." header.
+        datetime(2026, 7, 16, 10, 35, tzinfo=SGT),
+        id="paylah_debit",
+    ),
+    pytest.param(
+        "uob_cc/UOB - Transaction Alert.txt",
         Decimal("3.80"),
         "UOB_CC",
         datetime(2026, 7, 16, 0, 0, tzinfo=SGT),
         id="uob_cc_direct",
     ),
     pytest.param(
-        "uob_cc_fwd.txt",
-        Decimal("4.22"),
-        "UOB_CC",
-        datetime(2026, 7, 14, 0, 0, tzinfo=SGT),
-        id="uob_cc_fwd",
+        "uob_bank/UOB Personal Internet Banking Notification Alerts.txt",
+        Decimal("2500.00"),
+        "UOB_BANK_TRANSFER_DEBIT",
+        # Body: "at 12:35PM SGT, 14 Mar 26" → 2026-03-14 12:35 SGT.
+        datetime(2026, 3, 14, 12, 35, tzinfo=SGT),
+        id="uob_bank_transfer_debit",
     ),
     pytest.param(
-        "uob_cc_refund_fwd.txt",
+        "uob_cc/Your transaction has been refunded.txt",
         Decimal("-23.98"),
         "UOB_CC_REFUND",
         datetime(2026, 7, 6, 0, 0, tzinfo=SGT),
-        id="uob_cc_refund_fwd",
+        id="uob_cc_refund",
     ),
     pytest.param(
-        "uob_paynow_debit_fwd.txt",
+        "uob_cc/Your transaction has been reversed.txt",
+        Decimal("-2.73"),
+        "UOB_CC_REFUND",
+        datetime(2026, 7, 29, 22, 55, tzinfo=SGT),
+        id="uob_cc_reversed",
+    ),
+    pytest.param(
+        "uob_paynow/UOB Personal Internet Banking Notification Alerts.txt",
         Decimal("420.00"),
         "UOB_PAYNOW_DEBIT",
         datetime(2026, 6, 12, 0, 0, tzinfo=SGT),
-        id="uob_paynow_debit_fwd",
+        id="uob_paynow_debit",
     ),
     pytest.param(
-        "dbs_paynow_credit_fwd.txt",
-        Decimal("-40.00"),
-        "DBS_PAYNOW_CREDIT",
-        datetime(2026, 7, 7, 9, 45, tzinfo=SGT),
-        id="dbs_paynow_credit_fwd",
-    ),
-    pytest.param(
-        "paylah_debit_direct.txt",
-        Decimal("2000.00"),
-        "PAYLAH_DEBIT",
-        # 2-digit year falls into the "%d %b %y" branch which interprets
-        # "16 Jul" as 2010. Recorded here so the test fails loudly if the
-        # parser starts returning a different (and presumably more correct)
-        # value.
-        datetime(2010, 7, 16, 0, 0, tzinfo=SGT),
-        id="paylah_debit_direct",
-    ),
-    pytest.param(
-        "paylah_debit_fwd.txt",
-        Decimal("2000.00"),
-        "PAYLAH_DEBIT",
-        datetime(2008, 7, 13, 0, 0, tzinfo=SGT),
-        id="paylah_debit_fwd",
-    ),
-    pytest.param(
-        "dbs_cc_refund.txt",
-        Decimal("-25.50"),
-        "DBS_CC_REFUND",
-        datetime(2024, 6, 10, 0, 0, tzinfo=SGT),
-        id="dbs_cc_refund",
-    ),
-    pytest.param(
-        "dbs_paynow_debit.txt",
-        Decimal("10.00"),
-        "DBS_PAYNOW_DEBIT",
-        datetime(2016, 6, 26, 0, 0, tzinfo=SGT),
-        id="dbs_paynow_debit",
-    ),
-    pytest.param(
-        "paylah_debit.txt",
-        Decimal("2000.00"),
-        "PAYLAH_DEBIT",
-        datetime(2008, 7, 13, 0, 0, tzinfo=SGT),
-        id="paylah_debit",
-    ),
-    pytest.param(
-        "uob_paynow_credit.txt",
-        Decimal("-80.00"),
+        "uob_paynow/UOB-PayNow transfer received.txt",
+        Decimal("-2000.00"),
         "UOB_PAYNOW_CREDIT",
-        datetime(2024, 5, 22, 16, 0, tzinfo=SGT),
+        # Body: "on 15-SEP-2025 11:21PM" → 15-09-2025 23:21 SGT.
+        datetime(2025, 9, 15, 23, 21, tzinfo=SGT),
         id="uob_paynow_credit",
     ),
 ]
@@ -220,16 +224,23 @@ def test_real_email_parses_correctly(
     )
 
 
-# --- shouldNotParse fixtures: own-account transfer must not be claimed -----
+# --- shouldNotParse fixtures: parse_failure/* must be rejected ------------
 
-def test_ibanking_own_account_transfer_is_rejected(registry):
-    """Funds transfer between the user's own DBS/POSB accounts is not a
-    transaction we want to track — the registry must not claim it."""
-    fixture_path = FIXTURES_DIR / "dbs_ibanking_own_account.txt"
+REJECT_CASES = sorted(
+    str(p.relative_to(FIXTURES_DIR))
+    for p in FIXTURES_DIR.glob("parse_failure/*.txt")
+)
+
+
+@pytest.mark.parametrize("filename", REJECT_CASES)
+def test_parse_failure_fixtures_are_rejected(registry, filename):
+    """Every fixture in `parse_failure/` must not be claimed by any parser
+    (card-locked notices, eDocument alerts, own-account transfers, etc.)."""
+    fixture_path = FIXTURES_DIR / filename
     email = load_email(fixture_path)
 
     parser = registry.find_parser(email)
     assert parser is None, (
-        "iBanking own-account transfer should not be claimed by any parser, "
+        f"{filename} should not be claimed by any parser, "
         f"but {type(parser).__name__} claimed it"
     )

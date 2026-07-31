@@ -1,0 +1,38 @@
+Subject: digibank Alerts - You've received a transfer
+
+From: ibanking.alert@dbs.com
+
+To: ('HKMPEH@GMAIL.COM',)
+
+Date: 2026-07-30 16:11:59+00:00
+
+&zwnj; &zwnj; &zwnj; &zwnj; &zwnj; &zwnj; &zwnj; &zwnj; &zwnj; &zwnj; &zwnj; &zwnj; &zwnj; &zwnj; &zwnj; &zwnj; &zwnj; &zwnj;
+
+
+
+
+digibank Alerts - You've received a transfer
+
+Problems viewing this email? Select "always display images"
+
+
+
+
+Transaction Ref: 1785427898013581585500C100000000000
+
+Dear Customer,
+
+You have received SGD 0.50 via PayNow on 31 Jul 2026 00:11 SGT.
+
+From: TOM TAN
+
+To: Your DBS/ POSB account ending 5660
+
+Didn’t expect these funds? If this is a joint account, it may be for your joint account holder. Otherwise, please call our DBS hotline.
+Thank you for banking with us.
+Yours faithfully
+DBS Bank Ltd
+This is an auto-generated message. Please do not reply to this email.
+For enquiries, visit our DBS Help & Support Page
+or chat with us on DBS Digibot on our official DBS website.
+DBS Bank Ltd Co. Reg. No.: 196800306E

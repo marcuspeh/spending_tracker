@@ -1,5 +1,0 @@
-Subject: Transaction Alerts
-
-From: paylah.alert@dbs.com
-
-Transaction Alerts Problems viewing this email? Select "always display images". Transaction Ref: IPS78416931130225359 Dear Sir / Madam, We refer to your PayLah! Scan & Pay Transfer dated 16 Jul. We are pleased to confirm that the transaction was completed. Date & Time: 16 Jul 10:35 (SGT) Amount: SGD2000.00 From: PayLah! Wallet (Mobile ending 8352) To: CHOCFIN PTE. LTD. - CHOCOLATE CLIENTS AC To view your transactions, login to your PayLah! Wallet and select &ldquo;History&rdquo; at the bottom bar of the Home page. To manage your PayLah! notifications, select &ldquo;Settings&rdquo; then &ldquo;Manage Notifications&rdquo;. Please call DBS hotline immediately if this was an unauthorised transaction. Thank you for banking with us. Yours faithfully DBS Bank Ltd This is an auto-generated message. Please do not reply to this email.​

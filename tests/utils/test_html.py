@@ -44,7 +44,7 @@ class TestStripHtml:
             "<!DOCTYPE html><html><head><style>body { margin: 0 }</style></head>"
             "<body><table><tr><td>Card Transaction Alert</td></tr>"
             "<tr><td>Date &amp; Time: 16 JUL 12:39 (SGT)<br>"
-            "Amount: SGD2.15<br>From: DBS card ending 9700<br>"
+            "Amount: SGD2.15<br>From: DBS card ending 2453<br>"
             "To: APPLE.COM/BILL</td></tr></table></body></html>"
         )
         result = strip_html(html)
@@ -59,3 +59,7 @@ class TestStripHtml:
         html = "<style>" + "p { color: red; }" * 200 + "</style>" + "<p>x</p>"
         result = strip_html(html)
         assert "x" in result
+
+    def test_remove_extra_newlines(self):
+        html = "<p>Hello\n\n\n\nWorld</p>"
+        assert strip_html(html) == "Hello\nWorld"

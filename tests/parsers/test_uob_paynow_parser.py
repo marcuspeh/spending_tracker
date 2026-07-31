@@ -18,7 +18,7 @@ class TestUOBPayNowParser:
     def test_can_parse_uob_paynow(self):
         email = self._make_email(
             subject="PayNow Payment Alert",
-            body="You have sent a PayNow payment via UOB",
+            body="You have sent a PayNow payment of $50.00 to ALICE WONG via UOB",
             from_="uob-noreply@uobgroup.com",
         )
         assert self.parser.can_parse(email) is True

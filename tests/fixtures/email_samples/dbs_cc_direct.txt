@@ -1,5 +1,0 @@
-Subject: Card Transaction Alert
-
-From: ibanking.alert@dbs.com
-
-Card Transaction Alert Card Transaction Alert Transaction Ref: SP1300701680000000123953 Dear Sir / Madam, We refer to your card transaction request dated 16/07/26. We are pleased to confirm that the transaction was completed. Date & Time: 16 JUL 12:39 (SGT) Amount: SGD2.15 From: DBS/POSB card ending 9700 To: Inception SG Pte Ltd If unauthorised, please login to DBS digibank mobile to report fraud dispute immediately. Alternatively, call our DBS hotline. Thank you for banking with us. Yours faithfully, DBS Bank Ltd Please do not reply to this email as it is auto generated

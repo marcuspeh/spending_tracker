@@ -2,7 +2,8 @@ from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from datetime import datetime
 from decimal import Decimal
-from typing import Any
+from re import Pattern, compile
+from typing import Any, Sequence
 
 from app.utils.timezone import SGT
 
@@ -29,66 +30,174 @@ class BaseParser(ABC):
 
     @abstractmethod
     def can_parse(self, email: dict[str, Any]) -> bool:
-        """Check if this parser can handle the email.
-
-        Args:
-            email: Email dict with 'subject', 'body', 'from', etc.
-
-        Returns:
-            True if this parser can handle the email, False otherwise.
-        """
+        """Return True iff this parser claims the email."""
         pass
 
     @abstractmethod
     def parse(self, email: dict[str, Any]) -> ParsedTransaction:
-        """Parse the email and extract transaction details.
-
-        Args:
-            email: Email dict with 'subject', 'body', 'from', etc.
-
-        Returns:
-            ParsedTransaction with extracted data.
-
-        Raises:
-            ParserError: If parsing fails due to missing or invalid data.
-        """
+        """Parse the email and return a `ParsedTransaction`."""
         pass
+
+
+_MONTH_NUMBERS: dict[str, int] = {
+    "JAN": 1, "FEB": 2, "MAR": 3, "APR": 4,
+    "MAY": 5, "JUN": 6, "JUL": 7, "AUG": 8,
+    "SEP": 9, "OCT": 10, "NOV": 11, "DEC": 12,
+}
+
+
+def _strptime(text: str, fmt: str) -> datetime | None:
+    """Minimal locale-independent datetime parser for the formats we use.
+
+    Supported tokens: ``%d`` (day), ``%m`` (month number), ``%b`` / ``%B``
+    (3-letter / full month name — case-insensitive), ``%y`` (2-digit year
+    pivoted at 70/30 — ``%y`` 00-69 → 2000s, 70-99 → 1900s), ``%Y``
+    (4-digit year), ``%H`` (24h hour), ``%I`` (12h hour), ``%M`` (minute),
+    ``%S`` (second), ``%p`` (AM/PM). Anything else is matched literally.
+    Returns ``None`` on mismatch.
+    """
+    import re as _re
+
+    token_re = _re.compile(r"%([dmbyBHIMSYp])")
+    fmt_pos = 0
+    text_pos = 0
+    day = month = year = hour = minute = second = None
+
+    for m in token_re.finditer(fmt):
+        literal = fmt[fmt_pos:m.start()]
+        # The space between %M/%S and %p is often missing in email timestamps
+        # (e.g. "10:55PM"). Skip a single space literal if the next char in
+        # the text is the AM/PM marker.
+        if literal == " " and text_pos < len(text) and text[text_pos] in "AP":
+            # Try consuming the AM/PM directly without the space.
+            pass  # don't advance text_pos; let the %p branch match
+        elif not text.startswith(literal, text_pos):
+            return None
+        else:
+            text_pos += len(literal)
+        tok = m.group(1)
+        if tok in ("d", "m"):
+            mm = _re.match(r"(\d{1,2})", text[text_pos:])
+            if not mm:
+                return None
+            value = int(mm.group(1))
+            if tok == "d":
+                day = value
+            else:
+                month = value
+            text_pos += mm.end()
+        elif tok in ("b", "B"):
+            mm = _re.match(r"([A-Za-z]{3,9})", text[text_pos:])
+            if not mm:
+                return None
+            month = _MONTH_NUMBERS.get(mm.group(1).upper()[:3])
+            if month is None:
+                return None
+            text_pos += mm.end()
+        elif tok == "y":
+            mm = _re.match(r"(\d{2})", text[text_pos:])
+            if not mm:
+                return None
+            yy = int(mm.group(1))
+            year = 2000 + yy if yy < 70 else 1900 + yy
+            text_pos += mm.end()
+        elif tok == "Y":
+            mm = _re.match(r"(\d{4})", text[text_pos:])
+            if not mm:
+                return None
+            year = int(mm.group(1))
+            text_pos += mm.end()
+        elif tok == "H":
+            mm = _re.match(r"(\d{1,2})", text[text_pos:])
+            if not mm:
+                return None
+            hour = int(mm.group(1))
+            text_pos += mm.end()
+        elif tok == "I":
+            mm = _re.match(r"(\d{1,2})", text[text_pos:])
+            if not mm:
+                return None
+            hour = int(mm.group(1))
+            text_pos += mm.end()
+        elif tok == "M":
+            mm = _re.match(r"(\d{1,2})", text[text_pos:])
+            if not mm:
+                return None
+            minute = int(mm.group(1))
+            text_pos += mm.end()
+        elif tok == "S":
+            mm = _re.match(r"(\d{1,2})", text[text_pos:])
+            if not mm:
+                return None
+            second = int(mm.group(1))
+            text_pos += mm.end()
+        elif tok == "p":
+            mm = _re.match(r"(AM|PM|am|pm)", text[text_pos:])
+            if not mm:
+                return None
+            # Convert 12-hour + AM/PM into 24-hour hour.
+            ampm = mm.group(1).upper()
+            if hour is not None:
+                if ampm == "PM" and hour != 12:
+                    hour += 12
+                elif ampm == "AM" and hour == 12:
+                    hour = 0
+            text_pos += mm.end()
+        fmt_pos = m.end()
+
+    day = day if day is not None else 1
+    month = month if month is not None else 1
+    year = year if year is not None else 1900
+    hour = hour if hour is not None else 0
+    minute = minute if minute is not None else 0
+    second = second if second is not None else 0
+
+    try:
+        return datetime(year, month, day, hour, minute, second)
+    except ValueError:
+        return None
 
 
 class BankParser(BaseParser):
     """Shared base for parsers that extract amount/date/merchant from bank
     notification emails.
 
-    Concrete subclasses define:
-      - `name`: short identifier (e.g. "UOB_CC")
-      - `can_parse(email)`: True iff this parser claims the email
-      - `_debit_method`, `_credit_method` (optional), `_refund_method` (optional):
-        payment-method strings to return based on the transaction direction.
-      - `_merchant_pattern`: regex used to extract the merchant from body.
+    Each subclass defines regexes tailored to its specific email shape:
 
-    Optional overrides:
-      - `_extract_amount(body) -> Decimal`: default uses the shared regex.
-      - `_extract_date(body) -> datetime`: default tries a list of common formats.
-      - `_force_positive()`: return True for channels (e.g. PayLah) where
-        outgoing-only means we should never sign-flip the amount.
+      - `name`           : short identifier (e.g. "UOB_CC")
+      - `_amount_re`     : compiled regex that captures the transaction amount.
+                           The first capture group must be the numeric value
+                           (commas allowed). Defaults to ``SGD/S$/$`` matcher.
+      - `_merchant_re`   : compiled regex that captures the merchant/payee
+                           in its first group. Optional — falls back to
+                           `name` if unset or no match.
+      - `_date_patterns` : list of ``(compiled_regex, [strptime formats])``
+                           tuples tried in order. Optional — falls back to
+                           `now(SGT)` if none match.
+      - `_debit_method`  : payment-method string for purchases.
+      - `_credit_method` : (optional) for incoming transfers.
+      - `_refund_method` : (optional) for refunds/reversals.
+
+    A subclass MAY override `_force_positive()` to True for channels that
+    never send credit notifications (e.g. PayLah), which makes `_is_credit`
+    and `_is_refund` no-ops for sign-flipping.
     """
 
-    # Subclasses set these.
     name: str = ""
     _debit_method: str = ""
-    _credit_method: str = ""  # empty means this parser never returns credits
-    _refund_method: str = ""  # empty means this parser never returns refunds
-    _merchant_pattern: str = r"(?:at|from|to|merchant)\s+([A-Za-z0-9\s&.'-]+?)(?:\s+on|\s+\d|$)"
+    _credit_method: str = ""
+    _refund_method: str = ""
 
-    # Back-compat: subclasses/tests may still inspect this tuple.
-    @property
-    def _payment_methods(self) -> tuple[str, ...]:
-        methods = [self._debit_method]
-        if self._credit_method:
-            methods.append(self._credit_method)
-        if self._refund_method:
-            methods.append(self._refund_method)
-        return tuple(m for m in methods if m)
+    # Subclasses override these; the defaults keep the base importable.
+    _amount_re: Pattern[str] | Sequence[Pattern[str]] = compile(
+        r"(?:SGD|S\$|\$)\s*([\d,]+\.?\d*)"
+    )
+    _merchant_re: Pattern[str] | None = None
+    _date_patterns: list[tuple[Pattern[str], list[str]]] = []
+
+    # Matches ISO-format date from email headers that may appear inline in
+    # the body. Used to patch year-less dates parsed from the body.
+    _iso_date_re: Pattern[str] = compile(r"\bDate:\s*(\d{4})-\d{2}-\d{2}")
 
     # Keywords that mark an incoming/credit transaction.
     _CREDIT_KEYWORDS: tuple[str, ...] = (
@@ -99,7 +208,10 @@ class BankParser(BaseParser):
     )
 
     # Keywords that mark a refund/reversal.
-    _REFUND_KEYWORDS: tuple[str, ...] = ("refund", "reversal")
+    _REFUND_KEYWORDS: tuple[str, ...] = ("refund", "reversal", "reversed")
+
+    # Keywords to ignore an email.
+    _IGNORE_KEYWORDS: tuple[str, ...] = ("Your Funds Transfer to own account", "cancelled", "Funds Transfer Limit")
 
     # ---------- helpers subclasses can reuse ----------
 
@@ -115,55 +227,80 @@ class BankParser(BaseParser):
     def _is_refund(self, body_lower: str) -> bool:
         return any(kw in body_lower for kw in self._REFUND_KEYWORDS)
 
+    def _is_ignored(self, body_lower: str) -> bool:
+        """True iff the email contains a phrase that means it isn't a real
+        transaction we want to track (own-account transfers, cancellations,
+        limit-alert notices, etc.). Subclasses consult this from
+        ``can_parse`` to reject such emails before the amount / date
+        extraction runs."""
+        return any(kw.lower() in body_lower for kw in self._IGNORE_KEYWORDS)
+
     def _force_positive(self) -> bool:
         """Override to True for channels that only send outgoing notifications
         (e.g. PayLah). When True, refund/credit detection is ignored."""
         return False
 
+    def _has_amount(self, body: str) -> bool:
+        """True iff any amount regex matches. Used as a guard so notice /
+        lock / eDocument emails that happen to mention "card" / "paynow"
+        in passing don't get claimed."""
+        regexes = (
+            self._amount_re
+            if isinstance(self._amount_re, Sequence)
+            else [self._amount_re]
+        )
+        return any(r.search(body) is not None for r in regexes)
+
     def _extract_amount(self, body: str) -> Decimal:
-        """Find the first SGD/S$/$ amount in the body. Raises ParserError."""
-        import re
+        regexes = (
+            self._amount_re
+            if isinstance(self._amount_re, Sequence)
+            else [self._amount_re]
+        )
+        for r in regexes:
+            m = r.search(body)
+            if m:
+                return Decimal(m.group(1).replace(",", ""))
+        raise ParserError(
+            f"Missing amount in {self.name or type(self).__name__} email"
+        )
 
-        match = re.search(r"(?:SGD|S\$|\$)\s*([\d,]+\.?\d*)", body)
-        if not match:
-            raise ParserError(f"Missing amount in {self.name or type(self).__name__} email")
-        return Decimal(match.group(1).replace(",", ""))
+    def _extract_merchant(
+        self,
+        body: str,
+        is_credit: bool = False,
+        is_refund: bool = False,
+    ) -> str:
+        """Extract the merchant / counterparty name from the body.
 
-    def _extract_merchant(self, body: str) -> str:
-        """Extract a merchant string using `_merchant_pattern`. Falls back to
-        a sensible default if nothing matches.
+        Subclasses can pick a different ``_merchant_re`` based on
+        ``is_credit`` / ``is_refund`` by overriding this method. The default
+        uses the single ``_merchant_re`` attribute.
         """
-        import re
-
-        match = re.search(self._merchant_pattern, body, re.IGNORECASE | re.MULTILINE)
-        return match.group(1).strip() if match else (self.name or "Transaction")
+        if self._merchant_re is None:
+            return self.name or "Transaction"
+        m = self._merchant_re.search(body)
+        return m.group(1).strip() if m else (self.name or "Transaction")
 
     def _extract_date(self, body: str) -> datetime:
-        """Try a list of date patterns. Falls back to now(SGT)."""
-        import re
-
-        # (regex, [strptime formats])
-        # Slash/dash formats come BEFORE the 2-digit-year pattern to avoid
-        # false matches like "13 JUL 15:30" being parsed as 2015-07-13.
-        patterns: list[tuple[str, list[str]]] = [
-            (r"(\d{1,2}\s+\w+\s+\d{4}\s+\d{1,2}:\d{2})", ["%d %b %Y %H:%M", "%d %B %Y %H:%M"]),
-            (r"(\d{1,2}\s+\w+\s+\d{4})", ["%d %B %Y", "%d %b %Y"]),
-            (r"(\d{1,2}/\d{1,2}/\d{2,4})", ["%d/%m/%y", "%d/%m/%Y"]),
-            (r"(\d{1,2}-\d{1,2}-\d{2,4})", ["%d-%m-%y", "%d-%m-%Y"]),
-            (r"(\d{1,2}\s+\w+\s+\d{2})\b", ["%d %b %y", "%d %B %y"]),
-        ]
-        now = datetime.now(SGT)
-        for pattern, formats in patterns:
-            m = re.search(pattern, body)
+        if not self._date_patterns:
+            return datetime.now(SGT)
+        for pattern, formats in self._date_patterns:
+            m = pattern.search(body)
             if not m:
                 continue
+            text = m.group(1).strip()
             for fmt in formats:
-                try:
-                    parsed = datetime.strptime(m.group(1).strip(), fmt)
+                parsed = _strptime(text, fmt)
+                if parsed is not None:
+                    # Patch year when the body format omits it (e.g.
+                    # "dated 16 Jul" → year 1900 placeholder).
+                    if parsed.year == 1900:
+                        ym = self._iso_date_re.search(body)
+                        if ym:
+                            parsed = parsed.replace(year=int(ym.group(1)))
                     return parsed.replace(tzinfo=SGT)
-                except ValueError:
-                    continue
-        return now
+        return datetime.now(SGT)
 
     # ---------- shared parse() ----------
 
@@ -173,13 +310,29 @@ class BankParser(BaseParser):
 
         amount = self._extract_amount(body)
 
+        # Decide direction (debit/credit/refund) up front so the merchant
+        # extractor can pick the right counterparty line.
+        is_credit = (
+            not self._force_positive()
+            and bool(self._credit_method)
+            and self._is_credit(body_lower)
+            and not (
+                self._refund_method and self._is_refund(body_lower)
+            )
+        )
+        is_refund = (
+            not self._force_positive()
+            and bool(self._refund_method)
+            and self._is_refund(body_lower)
+        )
+
         if self._force_positive():
             method = self._debit_method
             amount = abs(amount)
-        elif self._refund_method and self._is_refund(body_lower):
+        elif is_refund:
             amount = -abs(amount)
             method = self._refund_method
-        elif self._credit_method and self._is_credit(body_lower):
+        elif is_credit:
             amount = -abs(amount)
             method = self._credit_method
         else:
@@ -187,7 +340,11 @@ class BankParser(BaseParser):
 
         return ParsedTransaction(
             amount=amount,
-            merchant=self._extract_merchant(body),
+            merchant=self._extract_merchant(
+                body,
+                is_credit=is_credit,
+                is_refund=is_refund,
+            ),
             payment_method=method,
             transaction_time=self._extract_date(body),
         )

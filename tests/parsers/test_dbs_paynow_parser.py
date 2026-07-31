@@ -29,7 +29,7 @@ class TestDBSPayNowParser:
         email = self._make_email(
             subject="Transaction Alerts",
             from_="paylah.alert@dbs.com",
-            body="We refer to a PayNow Transfer dated 26 Jun.",
+            body="We refer to a PayNow Transfer dated 26 Jun. Amount: SGD10.00",
         )
         assert self.parser.can_parse(email) is True
 
@@ -99,7 +99,7 @@ class TestDBSPayNowParser:
                 "We refer to a PayNow Transfer dated 26 Jun.\n"
                 "Amount: SGD10.00\n"
                 "From: PayLah! Wallet (Mobile ending 8352)\n"
-                "To: JOHN DOE (Mobile ending 1625)"
+                "To: JOHN DOE (Mobile ending 2453)"
             ),
         )
         assert self.parser.can_parse(email) is True

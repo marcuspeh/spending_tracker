@@ -16,14 +16,17 @@ class TestUOBCCParser:
     # --- can_parse ---
 
     def test_can_parse_uob_card_subject(self):
-        email = self._make_email(subject="UOB Card Transaction Alert")
+        email = self._make_email(
+            subject="UOB Card Transaction Alert",
+            body="A transaction of SGD 45.20 at Cold Storage.",
+        )
         assert self.parser.can_parse(email) is True
 
     def test_can_parse_uob_card_in_body(self):
         # Forwarded email: "UOB - Transaction Alert" subject, "Card" only in body
         email = self._make_email(
             subject="UOB - Transaction Alert",
-            body="Your UOB Card ending 5522 was used.",
+            body="Your UOB Card ending 5522 was used. Amount: SGD4.22",
         )
         assert self.parser.can_parse(email) is True
 

@@ -18,7 +18,7 @@ class TestPayLahParser:
     def test_can_parse_paylah(self):
         email = self._make_email(
             subject="Transaction Alerts",
-            body="Your PayLah! transaction was completed",
+            body="Your PayLah! transaction was completed. Amount: SGD25.00",
             from_="paylah.alert@dbs.com",
         )
         assert self.parser.can_parse(email) is True

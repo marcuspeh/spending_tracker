@@ -16,13 +16,21 @@ class TestDBSCCParser:
     # --- can_parse ---
 
     def test_can_parse_dbs_card_subject(self):
-        email = self._make_email(subject="Card Transaction Alert")
+        # Card-alert subjects always come from DBS, so the parser should
+        # claim any "Card Transaction Alert" / "Card Refund Alert" email
+        # that has an amount — even without an explicit DBS signal in the
+        # body.
+        email = self._make_email(
+            subject="Card Transaction Alert",
+            from_="ibanking.alert@dbs.com",
+            body="Amount: SGD3.98",
+        )
         assert self.parser.can_parse(email) is True
 
     def test_can_parse_dbs_card_with_from(self):
         email = self._make_email(
             subject="Alert",
-            body="Your card was used.",
+            body="Your card was used. Amount: SGD3.98",
             from_="ibanking.alert@dbs.com",
         )
         assert self.parser.can_parse(email) is True
@@ -52,7 +60,7 @@ class TestDBSCCParser:
             body=(
                 "Date & Time: 13 JUL 15:30 (SGT)\n"
                 "Amount: SGD3.98\n"
-                "From: DBS/POSB card ending 9700\n"
+                "From: DBS/POSB card ending 2453\n"
                 "To: APPLE.COM/BILL"
             ),
         )
@@ -87,7 +95,7 @@ class TestDBSCCParser:
             body=(
                 "Date & Time: 13 JUL 15:30 (SGT)\n"
                 "Amount: SGD3.98\n"
-                "From: DBS/POSB card ending 9700\n"
+                "From: DBS/POSB card ending 2453\n"
                 "To: APPLE.COM/BILL"
             ),
         )
