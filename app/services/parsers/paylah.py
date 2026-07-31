@@ -36,8 +36,10 @@ class PayLahParser(BankParser):
     # body — the base patches it from the email's `Date:` header via
     # _iso_date_re.
     _date_patterns = [
-        (compile(r"Date\s*&\s*Time:\s*(\d{1,2}\s+\w+\s+\d{1,2}:\d{2})"),
-         ["%d %b %H:%M", "%d %B %H:%M"]),
+        (
+            compile(r"Date\s*&\s*Time:\s*(\d{1,2}\s+\w+\s+\d{1,2}:\d{2})"),
+            ["%d %b %H:%M", "%d %B %H:%M"],
+        ),
     ]
 
     def can_parse(self, email: dict[str, Any]) -> bool:

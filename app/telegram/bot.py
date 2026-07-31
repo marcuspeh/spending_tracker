@@ -37,9 +37,7 @@ class TelegramBot:
         # Load whitelist
         await auth_middleware.load_whitelist()
 
-        self._app = Application.builder().token(
-            self.settings.telegram_bot_token
-        ).build()
+        self._app = Application.builder().token(self.settings.telegram_bot_token).build()
 
         # Register handlers
         self._app.add_handler(CommandHandler("start", start_handler))

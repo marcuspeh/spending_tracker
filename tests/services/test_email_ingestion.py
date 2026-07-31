@@ -19,6 +19,7 @@ from app.services.parsers.registry import ParserRegistry
 
 # ---------- helpers ----------
 
+
 @dataclass
 class FakeUserEmail:
     user_id: int = 42
@@ -95,6 +96,7 @@ def _email(**overrides: Any) -> dict:
 
 # ---------- tests ----------
 
+
 class TestProcessEmailSuccess:
     @pytest.mark.asyncio
     async def test_inserts_transaction_when_user_and_parser_match(self):
@@ -105,9 +107,7 @@ class TestProcessEmailSuccess:
         status = await service.process_email(_email())
         assert status == ImportStatus.SUCCESS
         mocks["transaction"].insert.assert_awaited_once()
-        mocks["imported"].insert.assert_awaited_with(
-            "<abc@example.com>", ImportStatus.SUCCESS
-        )
+        mocks["imported"].insert.assert_awaited_with("<abc@example.com>", ImportStatus.SUCCESS)
 
     @pytest.mark.asyncio
     async def test_user_email_string_form(self):

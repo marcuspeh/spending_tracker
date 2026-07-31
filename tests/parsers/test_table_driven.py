@@ -56,9 +56,11 @@ def registry() -> ParserRegistry:
 
 # --- "should parse" cases ---------------------------------------------------
 
+
 @dataclass(frozen=True)
 class ParseCase:
     """A single row of the parse table — mirrors Go's struct{}{...} slices."""
+
     name: str
     filename: str
     expected_amount: Decimal | None
@@ -165,7 +167,7 @@ PARSE_CASES: list[ParseCase] = [
         expected_amount=Decimal("-2000.00"),
         expected_method="UOB_PAYNOW_CREDIT",
         expected_time=datetime(2025, 9, 15, 23, 21, tzinfo=SGT),
-        expected_merchant="UOB_PAYNOW", # Body has no counterparty "to/from" — falls back to the parser name.
+        expected_merchant="UOB_PAYNOW",  # Body has no counterparty "to/from" — falls back to the parser name.
     ),
 ]
 
@@ -187,34 +189,29 @@ def test_parse_table_driven(registry, case: ParseCase):
 
     email = load_email(fixture_path)
     parser = registry.find_parser(email)
-    assert parser is not None, (
-        f"[{case.name}] {case.filename}: no parser claimed the email"
-    )
+    assert parser is not None, f"[{case.name}] {case.filename}: no parser claimed the email"
     result = parser.parse(email)
 
     if case.expected_amount is not None:
         assert result.amount == case.expected_amount, (
-            f"[{case.name}] amount: expected {case.expected_amount}, "
-            f"got {result.amount}"
+            f"[{case.name}] amount: expected {case.expected_amount}, got {result.amount}"
         )
     if case.expected_method is not None:
         assert result.payment_method == case.expected_method, (
-            f"[{case.name}] method: expected {case.expected_method}, "
-            f"got {result.payment_method}"
+            f"[{case.name}] method: expected {case.expected_method}, got {result.payment_method}"
         )
     if case.expected_time is not None:
         assert result.transaction_time == case.expected_time, (
-            f"[{case.name}] time: expected {case.expected_time}, "
-            f"got {result.transaction_time}"
+            f"[{case.name}] time: expected {case.expected_time}, got {result.transaction_time}"
         )
     if case.expected_merchant is not None:
         assert result.merchant == case.expected_merchant, (
-            f"[{case.name}] merchant: expected {case.expected_merchant!r}, "
-            f"got {result.merchant!r}"
+            f"[{case.name}] merchant: expected {case.expected_merchant!r}, got {result.merchant!r}"
         )
 
 
 # --- "should not parse" cases ----------------------------------------------
+
 
 @dataclass(frozen=True)
 class RejectCase:
@@ -248,6 +245,7 @@ def test_reject_table_driven(registry, case: RejectCase):
 
 
 # --- "discover everything" cases --------------------------------------------
+
 
 # A callable that, given a fixture path, returns the test-case factory for it
 # (or None if the fixture isn't in any of the table entries above).
@@ -285,8 +283,7 @@ def test_every_negative_fixture_is_in_the_table():
     ``REJECT_CASES``."""
     parse_failures = FIXTURES_DIR / "parse_failure"
     discovered = sorted(
-        str(p.relative_to(FIXTURES_DIR).as_posix())
-        for p in parse_failures.glob("*.txt")
+        str(p.relative_to(FIXTURES_DIR).as_posix()) for p in parse_failures.glob("*.txt")
     )
     listed = sorted(c.filename for c in REJECT_CASES)
     assert discovered == listed, (

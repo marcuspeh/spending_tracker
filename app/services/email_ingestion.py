@@ -33,7 +33,11 @@ class EmailIngestionService:
         message_id = email.get("message_id", "")
         if await self.imported_email_repo.exists_by_message_id(message_id):
             existing = await self.imported_email_repo.get_by_message_id(message_id)
-            if existing and existing.status == ImportStatus.FAILED and existing.reason == "UNKNOWN_FORWARDER":
+            if (
+                existing
+                and existing.status == ImportStatus.FAILED
+                and existing.reason == "UNKNOWN_FORWARDER"
+            ):
                 return ImportStatus.FAILED
             return existing.status if existing else ImportStatus.SKIPPED
 
@@ -48,9 +52,10 @@ class EmailIngestionService:
             await self.imported_email_repo.insert(message_id, ImportStatus.FAILED, "PARSE_ERROR")
             return ImportStatus.FAILED
 
-
         if parsed.payment_method not in PaymentMethod._value2member_map_:
-            await self.imported_email_repo.insert(message_id, ImportStatus.FAILED, "UNKNOWN_PAYMENT_METHOD")
+            await self.imported_email_repo.insert(
+                message_id, ImportStatus.FAILED, "UNKNOWN_PAYMENT_METHOD"
+            )
             return ImportStatus.FAILED
 
         # Resolve ownership. Trust only `to`/`cc` — these are the addresses
@@ -74,7 +79,9 @@ class EmailIngestionService:
                 break
 
         if not user_email:
-            await self.imported_email_repo.insert(message_id, ImportStatus.FAILED, "UNKNOWN_FORWARDER")
+            await self.imported_email_repo.insert(
+                message_id, ImportStatus.FAILED, "UNKNOWN_FORWARDER"
+            )
             return ImportStatus.FAILED
 
         payment_method = PaymentMethod(parsed.payment_method)

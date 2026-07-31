@@ -16,4 +16,6 @@ class ImportedEmail(Model):
         ordering = ["-created_at"]
 
     def __str__(self):
-        return f"ImportedEmail(id={self.id}, message_id={self.message_id[:30]}, status={self.status})"
+        return (
+            f"ImportedEmail(id={self.id}, message_id={self.message_id[:30]}, status={self.status})"
+        )

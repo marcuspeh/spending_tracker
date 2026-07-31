@@ -22,7 +22,7 @@ async def add_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
         await update.message.reply_text(
             "Usage: /add <amount> <merchant> [description...] [--date YYYY-MM-DD]\n"
             "Example: /add 25.50 Lunch\n"
-            "Example: /add 25.50 Lunch \"with colleagues\" --date 2024-12-25\n"
+            'Example: /add 25.50 Lunch "with colleagues" --date 2024-12-25\n'
             "Note: Use a negative amount for refunds (e.g., -10.00)."
         )
         return

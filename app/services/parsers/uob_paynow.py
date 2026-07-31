@@ -40,14 +40,16 @@ class UOBPayNowParser(BankParser):
     # Dates: "on 20 May 2024 09:15", "at 8:30PM SGT, 12 Jun 26", "on 22 May
     # 2024 16:00", "on 15-SEP-2025 11:21PM". 4-digit-year form first.
     _date_patterns = [
-        (compile(r"on\s+(\d{1,2}-\w+-\d{4}\s+\d{1,2}:\d{2}\s*[AP]M)"),
-         ["%d-%b-%Y %I:%M %p", "%d-%B-%Y %I:%M %p"]),
-        (compile(r"on\s+(\d{1,2}\s+\w+\s+\d{4}\s+\d{1,2}:\d{2})"),
-         ["%d %B %Y %H:%M", "%d %b %Y %H:%M"]),
-        (compile(r"on\s+(\d{1,2}\s+\w+\s+\d{4})"),
-         ["%d %B %Y", "%d %b %Y"]),
-        (compile(r",\s*(\d{1,2}\s+\w+\s+\d{2})\b"),
-         ["%d %b %y", "%d %B %y"]),
+        (
+            compile(r"on\s+(\d{1,2}-\w+-\d{4}\s+\d{1,2}:\d{2}\s*[AP]M)"),
+            ["%d-%b-%Y %I:%M %p", "%d-%B-%Y %I:%M %p"],
+        ),
+        (
+            compile(r"on\s+(\d{1,2}\s+\w+\s+\d{4}\s+\d{1,2}:\d{2})"),
+            ["%d %B %Y %H:%M", "%d %b %Y %H:%M"],
+        ),
+        (compile(r"on\s+(\d{1,2}\s+\w+\s+\d{4})"), ["%d %B %Y", "%d %b %Y"]),
+        (compile(r",\s*(\d{1,2}\s+\w+\s+\d{2})\b"), ["%d %b %y", "%d %B %y"]),
     ]
 
     def can_parse(self, email: dict[str, Any]) -> bool:

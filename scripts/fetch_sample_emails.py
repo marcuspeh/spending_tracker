@@ -63,9 +63,7 @@ def main():
     parser.add_argument(
         "--output", "-o", type=str, default="email_samples", help="Output directory"
     )
-    parser.add_argument(
-        "--dry-run", action="store_true", help="Print emails without saving"
-    )
+    parser.add_argument("--dry-run", action="store_true", help="Print emails without saving")
     parser.add_argument(
         "--all", "-a", action="store_true", help="Fetch all emails (not just unseen)"
     )

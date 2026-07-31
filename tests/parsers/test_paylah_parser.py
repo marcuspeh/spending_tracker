@@ -64,10 +64,7 @@ class TestPayLahParser:
         email = self._make_email(
             subject="PayLah! Transaction",
             from_="paylah.alert@dbs.com",
-            body=(
-                "You have received SGD 25.50 in your PayLah! Wallet\n"
-                "Amount: SGD25.50"
-            ),
+            body=("You have received SGD 25.50 in your PayLah! Wallet\nAmount: SGD25.50"),
         )
         result = self.parser.parse(email)
         assert result.payment_method == "PAYLAH_DEBIT"

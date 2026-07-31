@@ -51,17 +51,17 @@ class UOBCCParser(BankParser):
     # "on 29 Jul 26 10:55PM" (no space before AM/PM). 4-digit-year form
     # is tried first so we land on the correct year.
     _date_patterns = [
-        (compile(r"on\s+(\d{1,2}\s+\w+\s+\d{4}\s+\d{1,2}:\d{2}\s*[AP]M)"),
-         ["%d %b %Y %I:%M %p", "%d %B %Y %I:%M %p"]),
-        (compile(r"on\s+(\d{1,2}\s+\w+\s+\d{4})"),
-         ["%d %B %Y", "%d %b %Y"]),
-        (compile(r"on\s+(\d{1,2}\s+\w+\s+\d{2},?\s*\d{1,2}:\d{2}\s*[AP]M)"),
-         ["%d %b %y %I:%M %p", "%d %B %y %I:%M %p",
-          "%d %b %y, %I:%M %p", "%d %B %y, %I:%M %p"]),
-        (compile(r"on\s+(\d{1,2}/\d{1,2}/\d{2,4})"),
-         ["%d/%m/%y", "%d/%m/%Y"]),
-        (compile(r"on\s+(\d{1,2}\s+\w+\s+\d{2})"),
-         ["%d %b %y", "%d %B %y"]),
+        (
+            compile(r"on\s+(\d{1,2}\s+\w+\s+\d{4}\s+\d{1,2}:\d{2}\s*[AP]M)"),
+            ["%d %b %Y %I:%M %p", "%d %B %Y %I:%M %p"],
+        ),
+        (compile(r"on\s+(\d{1,2}\s+\w+\s+\d{4})"), ["%d %B %Y", "%d %b %Y"]),
+        (
+            compile(r"on\s+(\d{1,2}\s+\w+\s+\d{2},?\s*\d{1,2}:\d{2}\s*[AP]M)"),
+            ["%d %b %y %I:%M %p", "%d %B %y %I:%M %p", "%d %b %y, %I:%M %p", "%d %B %y, %I:%M %p"],
+        ),
+        (compile(r"on\s+(\d{1,2}/\d{1,2}/\d{2,4})"), ["%d/%m/%y", "%d/%m/%Y"]),
+        (compile(r"on\s+(\d{1,2}\s+\w+\s+\d{2})"), ["%d %b %y", "%d %B %y"]),
     ]
 
     def can_parse(self, email: dict[str, Any]) -> bool:

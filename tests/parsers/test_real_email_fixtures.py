@@ -64,9 +64,9 @@ def load_email(path: Path) -> dict:
     for line in raw.splitlines():
         if state == "preamble":
             if line.startswith("Subject:"):
-                subject = line[len("Subject:"):].strip()
+                subject = line[len("Subject:") :].strip()
             elif line.startswith("From:"):
-                from_ = line[len("From:"):].strip()
+                from_ = line[len("From:") :].strip()
             elif line.strip() == "" and subject:
                 state = "body"
         elif state == "body":
@@ -227,8 +227,7 @@ def test_real_email_parses_correctly(
 # --- shouldNotParse fixtures: parse_failure/* must be rejected ------------
 
 REJECT_CASES = sorted(
-    str(p.relative_to(FIXTURES_DIR))
-    for p in FIXTURES_DIR.glob("parse_failure/*.txt")
+    str(p.relative_to(FIXTURES_DIR)) for p in FIXTURES_DIR.glob("parse_failure/*.txt")
 )
 
 
@@ -241,6 +240,5 @@ def test_parse_failure_fixtures_are_rejected(registry, filename):
 
     parser = registry.find_parser(email)
     assert parser is None, (
-        f"{filename} should not be claimed by any parser, "
-        f"but {type(parser).__name__} claimed it"
+        f"{filename} should not be claimed by any parser, but {type(parser).__name__} claimed it"
     )

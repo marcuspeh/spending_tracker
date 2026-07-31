@@ -50,8 +50,7 @@ class Settings(BaseSettings):
         user = quote_plus(self.mysql_user)
         password = quote_plus(self.mysql_password)
         return (
-            f"mysql://{user}:{password}@{self.mysql_host}"
-            f":{self.mysql_port}/{self.mysql_database}"
+            f"mysql://{user}:{password}@{self.mysql_host}:{self.mysql_port}/{self.mysql_database}"
         )
 
     @field_validator("telegram_bot_token")

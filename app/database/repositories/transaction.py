@@ -33,16 +33,15 @@ class TransactionRepository:
 
     async def get_by_id_for_user(self, transaction_id: int, user_id: int) -> Transaction | None:
         return await Transaction.filter(
-            id=transaction_id,
-            user_id=user_id,
-            deleted_at__isnull=True
+            id=transaction_id, user_id=user_id, deleted_at__isnull=True
         ).first()
 
     async def list_latest_for_user(self, user_id: int, count: int = 10) -> list[Transaction]:
-        return await Transaction.filter(
-            user_id=user_id,
-            deleted_at__isnull=True
-        ).order_by("-transaction_time").limit(count)
+        return (
+            await Transaction.filter(user_id=user_id, deleted_at__isnull=True)
+            .order_by("-transaction_time")
+            .limit(count)
+        )
 
     async def list_in_range_for_user(
         self,
@@ -56,16 +55,20 @@ class TransactionRepository:
             user_id=user_id,
             deleted_at__isnull=True,
             transaction_time__gte=start_date,
-            transaction_time__lte=end_date
+            transaction_time__lte=end_date,
         ).count()
 
         # Get rows with limit+1 to detect truncation
-        rows = await Transaction.filter(
-            user_id=user_id,
-            deleted_at__isnull=True,
-            transaction_time__gte=start_date,
-            transaction_time__lte=end_date
-        ).order_by("-transaction_time").limit(limit + 1)
+        rows = (
+            await Transaction.filter(
+                user_id=user_id,
+                deleted_at__isnull=True,
+                transaction_time__gte=start_date,
+                transaction_time__lte=end_date,
+            )
+            .order_by("-transaction_time")
+            .limit(limit + 1)
+        )
 
         return rows[:limit], total_count
 
@@ -85,18 +88,24 @@ class TransactionRepository:
     ) -> float:
         """Sum signed amounts in [start, end] (UTC). Caller passes SGT
         windows converted to UTC via app.utils.timezone.sgt_to_utc()."""
-        result = await Transaction.filter(
-            user_id=user_id,
-            deleted_at__isnull=True,
-            transaction_time__gte=start,
-            transaction_time__lte=end,
-        ).annotate(total=Coalesce(Sum("amount"), 0)).values_list("total", flat=True)
+        result = (
+            await Transaction.filter(
+                user_id=user_id,
+                deleted_at__isnull=True,
+                transaction_time__gte=start,
+                transaction_time__lte=end,
+            )
+            .annotate(total=Coalesce(Sum("amount"), 0))
+            .values_list("total", flat=True)
+        )
         total = result[0] if result else 0
         return float(total) if total else 0.0
 
     async def search_transactions(self, user_id: int, merchant_substring: str) -> list[Transaction]:
-        return await Transaction.filter(
-            user_id=user_id,
-            deleted_at__isnull=True,
-            merchant__icontains=merchant_substring
-        ).order_by("-transaction_time").limit(200)
+        return (
+            await Transaction.filter(
+                user_id=user_id, deleted_at__isnull=True, merchant__icontains=merchant_substring
+            )
+            .order_by("-transaction_time")
+            .limit(200)
+        )

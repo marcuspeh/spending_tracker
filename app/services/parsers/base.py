@@ -40,9 +40,18 @@ class BaseParser(ABC):
 
 
 _MONTH_NUMBERS: dict[str, int] = {
-    "JAN": 1, "FEB": 2, "MAR": 3, "APR": 4,
-    "MAY": 5, "JUN": 6, "JUL": 7, "AUG": 8,
-    "SEP": 9, "OCT": 10, "NOV": 11, "DEC": 12,
+    "JAN": 1,
+    "FEB": 2,
+    "MAR": 3,
+    "APR": 4,
+    "MAY": 5,
+    "JUN": 6,
+    "JUL": 7,
+    "AUG": 8,
+    "SEP": 9,
+    "OCT": 10,
+    "NOV": 11,
+    "DEC": 12,
 }
 
 
@@ -64,7 +73,7 @@ def _strptime(text: str, fmt: str) -> datetime | None:
     day = month = year = hour = minute = second = None
 
     for m in token_re.finditer(fmt):
-        literal = fmt[fmt_pos:m.start()]
+        literal = fmt[fmt_pos : m.start()]
         # The space between %M/%S and %p is often missing in email timestamps
         # (e.g. "10:55PM"). Skip a single space literal if the next char in
         # the text is the AM/PM marker.
@@ -189,9 +198,7 @@ class BankParser(BaseParser):
     _refund_method: str = ""
 
     # Subclasses override these; the defaults keep the base importable.
-    _amount_re: Pattern[str] | Sequence[Pattern[str]] = compile(
-        r"(?:SGD|S\$|\$)\s*([\d,]+\.?\d*)"
-    )
+    _amount_re: Pattern[str] | Sequence[Pattern[str]] = compile(r"(?:SGD|S\$|\$)\s*([\d,]+\.?\d*)")
     _merchant_re: Pattern[str] | None = None
     _date_patterns: list[tuple[Pattern[str], list[str]]] = []
 
@@ -211,7 +218,11 @@ class BankParser(BaseParser):
     _REFUND_KEYWORDS: tuple[str, ...] = ("refund", "reversal", "reversed")
 
     # Keywords to ignore an email.
-    _IGNORE_KEYWORDS: tuple[str, ...] = ("Your Funds Transfer to own account", "cancelled", "Funds Transfer Limit")
+    _IGNORE_KEYWORDS: tuple[str, ...] = (
+        "Your Funds Transfer to own account",
+        "cancelled",
+        "Funds Transfer Limit",
+    )
 
     # ---------- helpers subclasses can reuse ----------
 
@@ -244,26 +255,16 @@ class BankParser(BaseParser):
         """True iff any amount regex matches. Used as a guard so notice /
         lock / eDocument emails that happen to mention "card" / "paynow"
         in passing don't get claimed."""
-        regexes = (
-            self._amount_re
-            if isinstance(self._amount_re, Sequence)
-            else [self._amount_re]
-        )
+        regexes = self._amount_re if isinstance(self._amount_re, Sequence) else [self._amount_re]
         return any(r.search(body) is not None for r in regexes)
 
     def _extract_amount(self, body: str) -> Decimal:
-        regexes = (
-            self._amount_re
-            if isinstance(self._amount_re, Sequence)
-            else [self._amount_re]
-        )
+        regexes = self._amount_re if isinstance(self._amount_re, Sequence) else [self._amount_re]
         for r in regexes:
             m = r.search(body)
             if m:
                 return Decimal(m.group(1).replace(",", ""))
-        raise ParserError(
-            f"Missing amount in {self.name or type(self).__name__} email"
-        )
+        raise ParserError(f"Missing amount in {self.name or type(self).__name__} email")
 
     def _extract_merchant(
         self,
@@ -316,14 +317,10 @@ class BankParser(BaseParser):
             not self._force_positive()
             and bool(self._credit_method)
             and self._is_credit(body_lower)
-            and not (
-                self._refund_method and self._is_refund(body_lower)
-            )
+            and not (self._refund_method and self._is_refund(body_lower))
         )
         is_refund = (
-            not self._force_positive()
-            and bool(self._refund_method)
-            and self._is_refund(body_lower)
+            not self._force_positive() and bool(self._refund_method) and self._is_refund(body_lower)
         )
 
         if self._force_positive():

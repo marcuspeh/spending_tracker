@@ -56,10 +56,7 @@ class TestDBSPayNowParser:
         email = self._make_email(
             subject="PayNow Payment Notification",
             from_="ibanking.alert@dbs.com",
-            body=(
-                "You have sent a PayNow payment of $25.00 to JOHN DOE on "
-                "25 June 2024 14:30."
-            ),
+            body=("You have sent a PayNow payment of $25.00 to JOHN DOE on 25 June 2024 14:30."),
         )
         result = self.parser.parse(email)
         assert result.amount == Decimal("25.00")

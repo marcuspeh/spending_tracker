@@ -45,10 +45,7 @@ class TestUOBPayNowParser:
         email = self._make_email(
             subject="PayNow Payment Alert",
             from_="uob-noreply@uobgroup.com",
-            body=(
-                "You have sent a PayNow payment of $50.00 to ALICE WONG on "
-                "20 May 2024 09:15."
-            ),
+            body=("You have sent a PayNow payment of $50.00 to ALICE WONG on 20 May 2024 09:15."),
         )
         result = self.parser.parse(email)
         assert result.amount == Decimal("50.00")
@@ -59,8 +56,7 @@ class TestUOBPayNowParser:
             subject="PayNow Received Funds Notification",
             from_="uob-noreply@uobgroup.com",
             body=(
-                "You have received a PayNow transfer of $80.00 from BOB LIM on "
-                "22 May 2024 16:00."
+                "You have received a PayNow transfer of $80.00 from BOB LIM on 22 May 2024 16:00."
             ),
         )
         result = self.parser.parse(email)

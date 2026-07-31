@@ -51,9 +51,7 @@ class DBSPayNowParser(BankParser):
         IGNORECASE,
     )
 
-    def _extract_merchant(
-        self, body: str, is_credit: bool = False, is_refund: bool = False
-    ) -> str:
+    def _extract_merchant(self, body: str, is_credit: bool = False, is_refund: bool = False) -> str:
         regex = self._merchant_re_credit if is_credit else self._merchant_re_debit
         m = regex.search(body)
         if not m:
@@ -68,16 +66,17 @@ class DBSPayNowParser(BankParser):
     # the body has no year, the base patches it from the email's `Date:`
     # header via _iso_date_re.
     _date_patterns = [
-        (compile(r"on\s+(\d{1,2}\s+\w+\s+\d{4}\s+\d{1,2}:\d{2})"),
-         ["%d %b %Y %H:%M", "%d %B %Y %H:%M"]),
-        (compile(r"on\s+(\d{1,2}\s+\w+\s+\d{4})"),
-         ["%d %B %Y", "%d %b %Y"]),
-        (compile(r"dated\s+(\d{1,2}\s+\w+\s+\d{4})"),
-         ["%d %B %Y", "%d %b %Y"]),
-        (compile(r"dated\s+(\d{1,2}\s+\w+\s+\d{2})"),
-         ["%d %b %y", "%d %B %y"]),
-        (compile(r"\bDate\s*&\s*Time:\s*(\d{1,2}\s+\w+\s+\d{1,2}:\d{2})"),
-         ["%d %b %H:%M", "%d %B %H:%M"]),
+        (
+            compile(r"on\s+(\d{1,2}\s+\w+\s+\d{4}\s+\d{1,2}:\d{2})"),
+            ["%d %b %Y %H:%M", "%d %B %Y %H:%M"],
+        ),
+        (compile(r"on\s+(\d{1,2}\s+\w+\s+\d{4})"), ["%d %B %Y", "%d %b %Y"]),
+        (compile(r"dated\s+(\d{1,2}\s+\w+\s+\d{4})"), ["%d %B %Y", "%d %b %Y"]),
+        (compile(r"dated\s+(\d{1,2}\s+\w+\s+\d{2})"), ["%d %b %y", "%d %B %y"]),
+        (
+            compile(r"\bDate\s*&\s*Time:\s*(\d{1,2}\s+\w+\s+\d{1,2}:\d{2})"),
+            ["%d %b %H:%M", "%d %B %H:%M"],
+        ),
     ]
 
     def can_parse(self, email: dict[str, Any]) -> bool:

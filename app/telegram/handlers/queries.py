@@ -107,7 +107,9 @@ async def range_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
 
     args = context.args
     if len(args) < 2:
-        await update.message.reply_text("Usage: /range <start> <end>\nExample: /range 2024-01-01 2024-01-31")
+        await update.message.reply_text(
+            "Usage: /range <start> <end>\nExample: /range 2024-01-01 2024-01-31"
+        )
         return
 
     chat_id = update.effective_chat.id

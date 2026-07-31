@@ -48,7 +48,6 @@ async def main():
     for sig in (signal.SIGTERM, signal.SIGINT):
         asyncio.get_running_loop().add_signal_handler(sig, lambda s=sig: signal_handler(s))
 
-
     health_runner = await start_health_server(bot, poller)
     poller_task = asyncio.create_task(poller.start())
     bot_task = asyncio.create_task(bot.start())
