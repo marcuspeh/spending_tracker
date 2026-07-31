@@ -48,7 +48,7 @@ class ExpenseService:
         transaction = await self.transaction_repo.get_by_id_for_user(transaction_id, user_id)
         if not transaction:
             return False
-        
+
         await self.transaction_repo.soft_delete(transaction)
         return True
 

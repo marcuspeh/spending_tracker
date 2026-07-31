@@ -183,5 +183,5 @@ async def confirm_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
             _pending_deletes.pop(chat_id, None)
         await update.message.reply_text(f"Transaction {txn_id} deleted.")
         return
-    
+
     await update.message.reply_text("Transaction not found or not owned by you.")
