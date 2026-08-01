@@ -36,8 +36,8 @@ async def main():
     logger.info("app_starting", timezone=settings.timezone)
 
     await init_db()
-    poller = GmailPoller()
     bot = TelegramBot()
+    poller = GmailPoller(telegram_bot=bot)
 
     shutdown_event = asyncio.Event()
 

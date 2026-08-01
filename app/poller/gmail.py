@@ -7,6 +7,7 @@ from imap_tools import AND, MailBox
 from app.config.settings import get_settings
 from app.database.enums import ImportStatus
 from app.services.email_ingestion import EmailIngestionService
+from app.services.notification import NotificationService
 from app.services.parsers import (
     DBSCCParser,
     DBSPayNowParser,
@@ -15,6 +16,7 @@ from app.services.parsers import (
     UOBCCParser,
     UOBPayNowParser,
 )
+from app.telegram.bot import TelegramBot
 from app.utils.html import strip_html
 
 logger = structlog.get_logger()
@@ -25,10 +27,12 @@ class GmailPoller:
 
     def __init__(
         self,
+        telegram_bot: TelegramBot | None = None,
         on_email_processed: Callable[[ImportStatus], Coroutine[Any, Any, None]] | None = None,
     ):
         self.settings = get_settings()
         self.on_email_processed = on_email_processed
+        self.telegram_bot = telegram_bot
         self._running = False
         self._task: asyncio.Task | None = None
 
@@ -123,7 +127,13 @@ class GmailPoller:
         }
 
         try:
-            service = EmailIngestionService(self.parser_registry)
+            notification_service = None
+            if self.telegram_bot is not None and self.telegram_bot._app is not None:
+                notification_service = NotificationService(self.telegram_bot._app)
+            service = EmailIngestionService(
+                self.parser_registry,
+                notification_service=notification_service,
+            )
             status = await service.process_email(email_dict)
             if status in (ImportStatus.SUCCESS, ImportStatus.SKIPPED, ImportStatus.FAILED):
                 await asyncio.to_thread(self._mark_as_read, email)

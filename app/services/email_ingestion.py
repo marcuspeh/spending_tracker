@@ -4,6 +4,7 @@ from app.database.enums import ImportStatus, PaymentMethod
 from app.database.repositories.imported_email import ImportedEmailRepository
 from app.database.repositories.transaction import TransactionRepository
 from app.database.repositories.user_email import UserEmailRepository
+from app.services.notification import NotificationService
 from app.services.parsers.base import ParserError
 from app.services.parsers.registry import ParserRegistry
 from app.utils.timezone import sgt_to_utc
@@ -15,8 +16,10 @@ class EmailIngestionService:
     def __init__(
         self,
         parser_registry: ParserRegistry,
+        notification_service: NotificationService | None = None,
     ):
         self.parser_registry = parser_registry
+        self.notification_service = notification_service
         self.transaction_repo = TransactionRepository()
         self.user_email_repo = UserEmailRepository()
         self.imported_email_repo = ImportedEmailRepository()
@@ -86,7 +89,7 @@ class EmailIngestionService:
 
         payment_method = PaymentMethod(parsed.payment_method)
         transaction_time_utc = sgt_to_utc(parsed.transaction_time)
-        await self.transaction_repo.insert(
+        txn = await self.transaction_repo.insert(
             user_id=user_email.user_id,
             amount=float(parsed.amount),
             merchant=parsed.merchant,
@@ -94,6 +97,9 @@ class EmailIngestionService:
             transaction_time=transaction_time_utc,
             description=parsed.description,
         )
+
+        if self.notification_service is not None:
+            await self.notification_service.notify_transaction(user_email.user_id, txn)
 
         await self.imported_email_repo.insert(message_id, ImportStatus.SUCCESS)
         return ImportStatus.SUCCESS

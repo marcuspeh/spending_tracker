@@ -31,6 +31,7 @@ def _make_service(
     user_email=None,
     parsed=None,
     parser_error: bool = False,
+    notification_service=None,
 ) -> tuple[EmailIngestionService, dict[str, AsyncMock]]:
     """Build an EmailIngestionService whose repositories are AsyncMocks.
 
@@ -52,14 +53,17 @@ def _make_service(
     user_email_mock = MagicMock()
     user_email_mock.find_by_email = AsyncMock(return_value=user_email)
 
+    fake_txn = MagicMock()
+    fake_txn.id = 1
     transaction_mock = MagicMock()
-    transaction_mock.insert = AsyncMock(return_value=MagicMock())
+    transaction_mock.insert = AsyncMock(return_value=fake_txn)
 
     service = EmailIngestionService.__new__(EmailIngestionService)
     service.parser_registry = registry
     service.imported_email_repo = imported_mock
     service.user_email_repo = user_email_mock
     service.transaction_repo = transaction_mock
+    service.notification_service = notification_service
     return service, {
         "imported": imported_mock,
         "user_email": user_email_mock,
@@ -223,6 +227,51 @@ class TestProcessEmailNoParser:
         service.imported_email_repo.insert.assert_awaited_with(
             "<abc@example.com>", ImportStatus.SKIPPED
         )
+
+
+class TestNotificationOnSuccess:
+    @pytest.mark.asyncio
+    async def test_notification_called_on_success(self):
+        notification_mock = MagicMock()
+        notification_mock.notify_transaction = AsyncMock()
+        service, _ = _make_service(
+            user_email=FakeUserEmail(user_id=42),
+            parsed=_parsed(),
+            notification_service=notification_mock,
+        )
+        status = await service.process_email(_email())
+        assert status == ImportStatus.SUCCESS
+        notification_mock.notify_transaction.assert_awaited_once()
+        # First arg = user_id, second arg = the inserted txn
+        args = notification_mock.notify_transaction.await_args.args
+        assert args[0] == 42
+        assert args[1].id == 1
+
+    @pytest.mark.asyncio
+    async def test_notification_not_called_on_failure(self):
+        notification_mock = MagicMock()
+        notification_mock.notify_transaction = AsyncMock()
+        service, _ = _make_service(
+            user_email=None,
+            parsed=_parsed(),
+            notification_service=notification_mock,
+        )
+        status = await service.process_email(_email())
+        assert status == ImportStatus.FAILED
+        notification_mock.notify_transaction.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_works_without_notification_service(self):
+        """If no notification service is wired (e.g. in tests), ingestion
+        must still succeed and the transaction must still be recorded."""
+        service, mocks = _make_service(
+            user_email=FakeUserEmail(),
+            parsed=_parsed(),
+            notification_service=None,
+        )
+        status = await service.process_email(_email())
+        assert status == ImportStatus.SUCCESS
+        mocks["transaction"].insert.assert_awaited_once()
 
 
 class TestUserAttributionTrust:
