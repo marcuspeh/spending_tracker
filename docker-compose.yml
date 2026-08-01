@@ -1,11 +1,11 @@
 version: "3.8"
 
 services:
-  expense-tracker:
+  spending-tracker:
     build:
       context: .
       dockerfile: Dockerfile
-    container_name: expense-tracker
+    container_name: spending-tracker
     restart: unless-stopped
     environment:
       - TZ=Asia/Singapore

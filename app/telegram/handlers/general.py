@@ -10,7 +10,7 @@ async def start_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
         return
 
     await update.message.reply_text(
-        "Welcome to Expense Tracker Bot!\n\n"
+        "Welcome to Spending Tracker Bot!\n\n"
         "Track your expenses by forwarding bank emails to this bot.\n"
         "Use /help to see available commands."
     )

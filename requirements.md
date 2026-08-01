@@ -1,8 +1,8 @@
-# Expense Tracker - MVP Specification
+# spending Tracker - MVP Specification
 
 ## Goal
 
-Build a self-hosted expense tracker that automatically imports transactions from forwarded emails and allows users to query and manage expenses through Telegram.
+Build a self-hosted spending tracker that automatically imports transactions from forwarded emails and allows users to query and manage expenses through Telegram.
 
 This is a personal project running on a home Ubuntu server.
 
@@ -651,7 +651,7 @@ Note: a successful healthcheck requires that at least one whitelisted Telegram u
 
 ## Recommended Project Structure
 
-expense-tracker/
+spending-tracker/
 
 ├── app/
 │   ├── config/

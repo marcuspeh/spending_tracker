@@ -1,7 +1,7 @@
 [project]
-name = "expense-tracker"
+name = "spending-tracker"
 version = "0.1.0"
-description = "Self-hosted personal expense tracker with Gmail IMAP and Telegram bot"
+description = "Self-hosted personal spending tracker with Gmail IMAP and Telegram bot"
 requires-python = ">=3.12"
 license = { text = "MIT" }
 authors = [

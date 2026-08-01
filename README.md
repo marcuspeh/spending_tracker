@@ -1,6 +1,6 @@
-# Expense Tracker
+# spending Tracker
 
-Self-hosted personal expense tracker that automatically imports bank transactions from forwarded Gmail emails and exposes query/management through a Telegram bot.
+Self-hosted personal spending tracker that automatically imports bank transactions from forwarded Gmail emails and exposes query/management through a Telegram bot.
 
 ## Prerequisites
 
@@ -21,7 +21,7 @@ curl -LsSf https://astral.sh/uv/install.sh | sh
 
 ```bash
 git clone <repository-url>
-cd expense-tracker
+cd spending-tracker
 cp .env.example .env
 ```
 
@@ -54,7 +54,7 @@ docker compose up -d mysql
 Wait for MySQL to be healthy, then:
 
 ```bash
-docker compose up -d expense-tracker
+docker compose up -d spending-tracker
 ```
 
 ### 5. Manual DB Onboarding
@@ -63,7 +63,7 @@ Connect to MySQL and add users:
 
 ```sql
 -- Connect to MySQL
-docker exec -it expense-tracker-mysql mysql -u root -p
+docker exec -it spending-tracker-mysql mysql -u root -p
 
 -- Insert a user (chat_id from Telegram)
 INSERT INTO users (telegram_chat_id, name, active) VALUES (123456789, 'Your Name', true);
@@ -182,7 +182,7 @@ Option A: Docker container only (no Docker Compose for the app):
 
 ```bash
 docker run -d \
-  --name expense-mysql \
+  --name spending-mysql \
   -e MYSQL_ROOT_PASSWORD=rootpassword \
   -e MYSQL_DATABASE=expense_tracker \
   -e MYSQL_USER=expense_user \
