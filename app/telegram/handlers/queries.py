@@ -4,7 +4,12 @@ from telegram.ext import ContextTypes
 from app.database.repositories.user import UserRepository
 from app.services.expense import ExpenseService
 from app.telegram.auth import auth_handler
-from app.telegram.handlers._helpers import format_amount, format_transaction, format_transactions
+from app.telegram.handlers._helpers import (
+    format_amount,
+    format_transaction,
+    format_transactions,
+    remember_recent,
+)
 from app.utils.timezone import parse_date
 
 
@@ -34,6 +39,7 @@ async def latest_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
     transactions = await expense_service.get_latest_transactions(user.id, count)
 
     text = format_transactions(transactions, f"Latest {len(transactions)} transactions")
+    remember_recent(chat_id, [t.id for t in transactions])
     await update.message.reply_text(text)
 
 
@@ -141,6 +147,7 @@ async def range_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
     text += f"\n\nTotal: {total_count}"
     if is_truncated:
         text += " (showing first 200, results truncated)"
+    remember_recent(chat_id, [t.id for t in transactions])
 
     await update.message.reply_text(text)
 
@@ -168,4 +175,5 @@ async def search_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
     transactions = await expense_service.search_transactions(user.id, merchant)
 
     text = format_transactions(transactions, f'Search results for "{merchant}"')
+    remember_recent(chat_id, [t.id for t in transactions])
     await update.message.reply_text(text)

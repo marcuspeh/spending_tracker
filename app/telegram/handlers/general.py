@@ -34,9 +34,18 @@ Viewing transactions:
 
 Managing transactions:
 /add <amount> <merchant> [description] [date] - Add manual transaction
-/edit <id> <field> <value> - Edit a transaction (amount, merchant, description, transaction_time)
-/delete <id> - Start delete confirmation
-/confirm <id> - Confirm deletion
+/edit <index> <field> <value> - Edit a transaction (amount, merchant, description, transaction_time)
+/delete <index> - Start delete confirmation
+/confirm <index> - Confirm deletion
+/cancel <index> - Cancel a pending delete
+
+For /edit, /delete, /confirm, and /cancel, pass the 1-based row number from
+the most recent /latest, /search, or /range output. Example flow:
+
+  /latest            → 1. STARBUCKS
+                       2. GRAB
+  /delete 2          → confirms intent for the 2nd transaction shown
+  /confirm 2         → deletes that transaction
 
 Other:
 /ping - Check bot is alive

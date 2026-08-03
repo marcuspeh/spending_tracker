@@ -8,7 +8,12 @@ from app.database.enums import PaymentMethod
 from app.database.repositories.user import UserRepository
 from app.services.expense import ExpenseService
 from app.telegram.auth import auth_handler
-from app.telegram.handlers._helpers import _pending_deletes, format_amount
+from app.telegram.handlers._helpers import (
+    _pending_deletes,
+    clear_recent,
+    format_amount,
+    resolve_recent,
+)
 from app.utils.timezone import now_sgt, parse_date, utc_to_sgt
 
 
@@ -82,25 +87,33 @@ async def add_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
 
 
 async def edit_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """Handle /edit <id> <field> <value> command."""
+    """Handle /edit <index> <field> <value> command.
+
+    ``index`` is the 1-based row number from the most recent /latest,
+    /search, or /range result. If no list is cached (or the index is out
+    of range) the user is told to run a list command first.
+    """
     if not await auth_handler(update, context):
         return
 
     args = context.args
     if len(args) < 3:
         await update.message.reply_text(
-            "Usage: /edit <id> <field> <value>\n"
+            "Usage: /edit <index> <field> <value>\n"
             "Fields: amount, merchant, description, transaction_time\n"
-            "Example: /edit 5 amount 30.00"
+            "Example: /edit 2 merchant \"Bus/MRT\"\n"
+            "Run /latest (or /search, /range) first to see the index."
         )
         return
 
     chat_id = update.effective_chat.id
 
-    try:
-        txn_id = int(args[0])
-    except ValueError:
-        await update.message.reply_text("Invalid transaction ID.")
+    txn_id = resolve_recent(chat_id, args[0])
+    if txn_id is None:
+        await update.message.reply_text(
+            "Invalid index. Run /latest, /search, or /range first to see "
+            "the list, then use the number from that list."
+        )
         return
 
     field = args[1]
@@ -116,52 +129,70 @@ async def edit_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
     txn = await expense_service.edit_transaction(user.id, txn_id, field, value)
 
     if txn:
-        await update.message.reply_text("Transaction updated!")
+        await update.message.reply_text(
+            f"Transaction {txn_id} updated!"
+        )
+        clear_recent(chat_id)
     else:
         await update.message.reply_text("Transaction not found.")
 
 
 async def delete_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """Handle /delete <id> command (first step of two-step delete)."""
+    """Handle /delete <index> command (first step of two-step delete).
+
+    ``index`` is the 1-based row number from the most recent /latest,
+    /search, or /range result. A pending delete stays valid until
+    /confirm or /cancel is sent.
+    """
     if not await auth_handler(update, context):
         return
 
     args = context.args
     if not args:
-        await update.message.reply_text("Usage: /delete <id>")
+        await update.message.reply_text(
+            "Usage: /delete <index>\n"
+            "Example: /delete 2   (deletes the 2nd row from the most recent "
+            "/latest, /search, or /range)"
+        )
         return
 
     chat_id = update.effective_chat.id
 
-    try:
-        txn_id = int(args[0])
-    except ValueError:
-        await update.message.reply_text("Invalid transaction ID.")
+    txn_id = resolve_recent(chat_id, args[0])
+    if txn_id is None:
+        await update.message.reply_text(
+            "Invalid index. Run /latest, /search, or /range first to see "
+            "the list, then use the number from that list."
+        )
         return
 
     _pending_deletes.setdefault(chat_id, set()).add(txn_id)
     await update.message.reply_text(
-        f"To confirm deletion of transaction {txn_id}, send /confirm {txn_id}"
+        f"To confirm deletion of transaction {txn_id}, send /confirm {txn_id}\n"
+        f"Or /cancel {txn_id} to abort."
     )
 
 
 async def confirm_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """Handle /confirm <id> command (second step of two-step delete)."""
+    """Handle /confirm <index> command (second step of two-step delete)."""
     if not await auth_handler(update, context):
         return
 
     args = context.args
     if not args:
-        await update.message.reply_text("Usage: /confirm <id>")
-        return
-
-    try:
-        txn_id = int(args[0])
-    except ValueError:
-        await update.message.reply_text("Invalid transaction ID.")
+        await update.message.reply_text("Usage: /confirm <index>")
         return
 
     chat_id = update.effective_chat.id
+
+    txn_id = resolve_recent(chat_id, args[0])
+    if txn_id is None:
+        await update.message.reply_text(
+            "Invalid index. Run /latest, /search, or /range first to see "
+            "the list, then use the number from that list."
+        )
+        return
+
     pending = _pending_deletes.get(chat_id, set())
     if txn_id not in pending:
         await update.message.reply_text(
@@ -181,7 +212,43 @@ async def confirm_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
         _pending_deletes[chat_id].discard(txn_id)
         if not _pending_deletes[chat_id]:
             _pending_deletes.pop(chat_id, None)
+        clear_recent(chat_id)
         await update.message.reply_text(f"Transaction {txn_id} deleted.")
         return
 
     await update.message.reply_text("Transaction not found or not owned by you.")
+
+
+async def cancel_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Handle /cancel <index> to abort a pending delete."""
+    if not await auth_handler(update, context):
+        return
+
+    chat_id = update.effective_chat.id
+    args = context.args
+
+    if not args:
+        # No index supplied: drop everything for this chat.
+        had_pending = bool(_pending_deletes.pop(chat_id, None))
+        if had_pending:
+            await update.message.reply_text("All pending deletes cancelled.")
+        else:
+            await update.message.reply_text("No pending deletes.")
+        return
+
+    txn_id = resolve_recent(chat_id, args[0])
+    if txn_id is None:
+        await update.message.reply_text(
+            "Invalid index. Run /latest, /search, or /range first to see "
+            "the list, then use the number from that list."
+        )
+        return
+
+    pending = _pending_deletes.get(chat_id)
+    if pending and txn_id in pending:
+        pending.discard(txn_id)
+        if not pending:
+            _pending_deletes.pop(chat_id, None)
+        await update.message.reply_text(f"Pending delete for {txn_id} cancelled.")
+    else:
+        await update.message.reply_text(f"No pending delete for {txn_id}.")
