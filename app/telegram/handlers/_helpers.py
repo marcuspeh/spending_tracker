@@ -1,5 +1,7 @@
 from typing import Any
 
+from telegram import Bot
+
 from app.utils.timezone import utc_to_sgt
 
 # In-memory state for two-step delete confirmation, keyed by chat_id.
@@ -75,34 +77,68 @@ def _truncate(text: str, max_len: int) -> str:
     return text[: max_len - 1] + "…"
 
 
-def render_latest_table(transactions: list) -> str:
-    """Render ``transactions`` as a Markdown monospace table.
+def _escape_html(text: str) -> str:
+    """Escape the three characters Telegram's HTML parser special-cases."""
+    return (
+        text.replace("&", "&amp;")
+        .replace("<", "&lt;")
+        .replace(">", "&gt;")
+    )
 
-    Returns a single string ready to send via ``send_message(text, parse_mode="Markdown")``.
-    No inline keyboard — rows are static; users act on them via the
-    existing /edit <index>, /delete <index>, /confirm <index> flow.
+
+def render_latest_table(transactions: list) -> str:
+    """Render ``transactions`` as a Telegram Rich Message table.
+
+    Uses the Bot API 10.1 ``sendRichMessage`` HTML-style markup
+    (``<table>``, ``<tr>``, ``<th>``, ``<td>``) which renders natively in
+    modern Telegram clients — no code fences, no manual padding.
+
+    Returns the HTML string ready to pass to ``send_rich_message``.
     """
     if not transactions:
-        return "No transactions found."
+        return "<p>No transactions found.</p>"
 
-    header = "*Latest transactions*\n```\n"
-    rule = (
-        f"{'#':>3}  {'DATE':<10}  {'TIME':<5}  {'AMOUNT':>10}  "
-        f"{'METHOD':<22}  MERCHANT\n"
-        f"{'─' * 3}  {'─' * 10}  {'─' * 5}  {'─' * 10}  "
-        f"{'─' * 22}  {'─' * 24}\n"
-    )
-    body_lines = []
+    def cell(text: str, *, header: bool = False) -> str:
+        tag = "th" if header else "td"
+        return f"<{tag}>{_escape_html(text)}</{tag}>"
+
+    headers = ["#", "DATE", "TIME", "AMOUNT", "METHOD", "MERCHANT"]
+    head_row = "<tr>" + "".join(cell(h, header=True) for h in headers) + "</tr>"
+
+    body_rows = []
     for offset, txn in enumerate(transactions, 1):
         time_sgt = utc_to_sgt(txn.transaction_time)
         sign = "-" if txn.amount < 0 else "+"
         amount = f"{sign}{format_amount(txn.amount)}"
-        method = _truncate(txn.payment_method.value, 22)
-        merchant = _truncate(txn.merchant or "", 24)
-        body_lines.append(
-            f"{offset:>3}  {time_sgt.strftime('%d %b'):<10}  "
-            f"{time_sgt.strftime('%H:%M'):<5}  {amount:>10}  "
-            f"{method:<22}  {merchant}"
+        body_rows.append(
+            "<tr>"
+            + cell(str(offset))
+            + cell(time_sgt.strftime("%d %b"))
+            + cell(time_sgt.strftime("%H:%M"))
+            + cell(amount)
+            + cell(_truncate(txn.payment_method.value, 22))
+            + cell(_truncate(txn.merchant or "", 32))
+            + "</tr>"
         )
-    footer = "\n```"
-    return header + rule + "\n".join(body_lines) + footer
+
+    return (
+        "<h2>Latest transactions</h2>"
+        "<table is_bordered=\"true\" is_striped=\"true\">"
+        "<thead>" + head_row + "</thead>"
+        "<tbody>" + "".join(body_rows) + "</tbody>"
+        "</table>"
+    )
+
+
+async def send_rich_message(bot: Bot, chat_id: int, html: str) -> Any:
+    """Send a Bot API 10.1 Rich Message via ``sendRichMessage``.
+
+    ``python-telegram-bot`` v22 doesn't yet expose this method (tracked in
+    upstream issue #5261, targeting v23), so we hit the raw HTTP API
+    through PTB's private ``Bot._post`` helper. This inherits PTB's base
+    URL, retries, and token handling.
+    """
+    return await bot._post(  # type: ignore[attr-defined]
+        "sendRichMessage",
+        data={"chat_id": chat_id, "html": html},
+    )

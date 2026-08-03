@@ -1,3 +1,5 @@
+import structlog
+
 from telegram import Update
 from telegram.ext import ContextTypes
 
@@ -10,16 +12,19 @@ from app.telegram.handlers._helpers import (
     format_transactions,
     remember_recent,
     render_latest_table,
+    send_rich_message,
 )
 from app.utils.timezone import parse_date
+
+logger = structlog.get_logger()
 
 
 async def latest_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Handle /latest [count] command.
 
-    Renders the most recent N transactions as an interactive table:
-    a monospace grid of rows with an inline keyboard of per-row buttons,
-    plus Prev/Next pagination buttons under the table.
+    Sends a Bot API 10.1 Rich Message with the transactions rendered as a
+    native ``<table>``. Falls back to a plain text message if the API
+    rejects the rich-message payload (e.g. on older clients / API).
     """
     if not await auth_handler(update, context):
         return
@@ -27,7 +32,6 @@ async def latest_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
     chat_id = update.effective_chat.id
     args = context.args
 
-    # Parse count
     count = 10
     if args:
         try:
@@ -46,11 +50,16 @@ async def latest_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
 
     remember_recent(chat_id, [t.id for t in transactions])
 
-    text = render_latest_table(transactions)
-    await update.message.reply_text(
-        text,
-        parse_mode="Markdown",
-    )
+    html = render_latest_table(transactions)
+    try:
+        await send_rich_message(context.bot, chat_id, html)
+    except Exception as e:
+        # Fall back to plain text if Rich Messages aren't supported
+        # (older API version, network glitch, etc.).
+        logger.warning("rich_message_send_failed", error=str(e))
+        await update.message.reply_text(
+            format_transactions(transactions, "Latest transactions")
+        )
 
 
 async def today_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
