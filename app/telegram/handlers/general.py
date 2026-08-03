@@ -25,8 +25,7 @@ async def help_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
 Available commands:
 
 Viewing transactions:
-/latest [count] - Show latest transactions as an interactive table (default: 10, max: 50).
-                  Tap a row to Edit or Delete; use « Prev / Next » to paginate.
+/latest [count] - Show latest transactions as a table (default: 10, max: 50)
 /today - Show today's spending total
 /week - Show this week's spending total
 /thismonth - Show this month's spending total

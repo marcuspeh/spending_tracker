@@ -46,10 +46,9 @@ async def latest_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
 
     remember_recent(chat_id, [t.id for t in transactions])
 
-    text, keyboard = render_latest_table(transactions, page=1)
+    text = render_latest_table(transactions)
     await update.message.reply_text(
         text,
-        reply_markup=keyboard,
         parse_mode="Markdown",
     )
 

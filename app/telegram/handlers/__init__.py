@@ -4,7 +4,6 @@ Re-exports every handler so existing call sites can keep using
 `from app.telegram.handlers import <name>_handler`.
 """
 
-from app.telegram.handlers.callbacks import latest_callback_handler
 from app.telegram.handlers.general import (
     help_handler,
     ping_handler,
@@ -33,7 +32,6 @@ __all__ = [
     "delete_handler",
     "edit_handler",
     "help_handler",
-    "latest_callback_handler",
     "latest_handler",
     "month_handler",
     "ping_handler",
