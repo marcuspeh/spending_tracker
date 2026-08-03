@@ -19,7 +19,7 @@ COPY app/ ./app/
 
 # Healthcheck probes the in-process HTTP endpoint
 HEALTHCHECK --interval=60s --timeout=10s --retries=3 \
-    CMD python -m app.cli healthcheck
+    CMD uv run python -m app.cli healthcheck
 
-# Run the application
-CMD ["python", "-m", "app.main"]
+# Run the application via uv so it picks up the .venv created above
+CMD ["uv", "run", "python", "-m", "app.main"]
