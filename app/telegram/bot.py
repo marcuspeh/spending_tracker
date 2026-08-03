@@ -1,7 +1,7 @@
 import asyncio
 
 import structlog
-from telegram.ext import Application, CommandHandler
+from telegram.ext import Application, CallbackQueryHandler, CommandHandler
 
 from app.config.settings import get_settings
 from app.telegram.auth import auth_middleware
@@ -12,6 +12,7 @@ from app.telegram.handlers import (
     delete_handler,
     edit_handler,
     help_handler,
+    latest_callback_handler,
     latest_handler,
     month_handler,
     ping_handler,
@@ -56,6 +57,13 @@ class TelegramBot:
         self._app.add_handler(CommandHandler("delete", delete_handler))
         self._app.add_handler(CommandHandler("confirm", confirm_handler))
         self._app.add_handler(CommandHandler("cancel", cancel_handler))
+
+        # Inline-keyboard callbacks from the /latest table view. Only
+        # handle payloads we own so future buttons can route their own
+        # callback handlers without conflict.
+        self._app.add_handler(
+            CallbackQueryHandler(latest_callback_handler, pattern=r"^latest:")
+        )
 
         await self._app.initialize()
         await self._app.start()

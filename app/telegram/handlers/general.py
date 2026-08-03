@@ -25,7 +25,8 @@ async def help_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
 Available commands:
 
 Viewing transactions:
-/latest [count] - Show latest transactions (default: 10, max: 50)
+/latest [count] - Show latest transactions as an interactive table (default: 10, max: 50).
+                  Tap a row to Edit or Delete; use « Prev / Next » to paginate.
 /today - Show today's spending total
 /week - Show this week's spending total
 /thismonth - Show this month's spending total
@@ -40,12 +41,7 @@ Managing transactions:
 /cancel <index> - Cancel a pending delete
 
 For /edit, /delete, /confirm, and /cancel, pass the 1-based row number from
-the most recent /latest, /search, or /range output. Example flow:
-
-  /latest            → 1. STARBUCKS
-                       2. GRAB
-  /delete 2          → confirms intent for the 2nd transaction shown
-  /confirm 2         → deletes that transaction
+the most recent /latest (or /search, /range) output.
 
 Other:
 /ping - Check bot is alive

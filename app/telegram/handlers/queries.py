@@ -9,12 +9,18 @@ from app.telegram.handlers._helpers import (
     format_transaction,
     format_transactions,
     remember_recent,
+    render_latest_table,
 )
 from app.utils.timezone import parse_date
 
 
 async def latest_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """Handle /latest [count] command."""
+    """Handle /latest [count] command.
+
+    Renders the most recent N transactions as an interactive table:
+    a monospace grid of rows with an inline keyboard of per-row buttons,
+    plus Prev/Next pagination buttons under the table.
+    """
     if not await auth_handler(update, context):
         return
 
@@ -38,9 +44,14 @@ async def latest_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
     expense_service = ExpenseService()
     transactions = await expense_service.get_latest_transactions(user.id, count)
 
-    text = format_transactions(transactions, f"Latest {len(transactions)} transactions")
     remember_recent(chat_id, [t.id for t in transactions])
-    await update.message.reply_text(text)
+
+    text, keyboard = render_latest_table(transactions, page=1)
+    await update.message.reply_text(
+        text,
+        reply_markup=keyboard,
+        parse_mode="Markdown",
+    )
 
 
 async def today_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
