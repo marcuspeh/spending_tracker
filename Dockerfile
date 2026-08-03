@@ -3,6 +3,10 @@ FROM python:3.12-slim
 # Set timezone
 ENV TZ=Asia/Singapore
 
+# Flush stdout/stderr immediately so Docker logs surface errors as they
+# happen instead of buffering them until the process exits.
+ENV PYTHONUNBUFFERED=1
+
 # Install uv
 RUN pip install uv
 
