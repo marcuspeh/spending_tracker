@@ -24,18 +24,18 @@ def remember_recent(chat_id: int, txn_ids: list[int]) -> None:
 
 
 def resolve_recent(chat_id: int, key: int | str) -> int | None:
-    """Resolve a user's ``key`` (1-based index from /latest, or raw id) to
-    a real transaction id. Returns ``None`` if nothing is cached or the key
-    is invalid.
+    """Resolve a user's ``key`` (1-based index from /latest) to the
+    real transaction id stored in the most-recent-list cache.
+
+    Returns ``None`` if nothing is cached, the key isn't a valid integer,
+    or the key isn't in the cached range.
     """
     cached = _recent_index.get(chat_id, {})
     try:
         key_int = int(key)
     except (TypeError, ValueError):
         return None
-    if key_int in cached:
-        return key_int
-    return None
+    return cached.get(key_int)
 
 
 def clear_recent(chat_id: int) -> None:
