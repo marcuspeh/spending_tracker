@@ -36,11 +36,17 @@ Managing transactions:
 /add <amount> <merchant> [description] [date] - Add manual transaction
 /edit <index> <field> <value> - Edit a transaction (amount, merchant, description, transaction_time)
 /delete <index> - Start delete confirmation
-/confirm <index> - Confirm deletion
-/cancel <index> - Cancel a pending delete
+/confirm - Confirm a pending delete (omit the index)
+/confirm <index> - Confirm a specific pending delete
+/cancel - Cancel all pending deletes
+/cancel <index> - Cancel a specific pending delete
 
-For /edit, /delete, /confirm, and /cancel, pass the 1-based row number from
-the most recent /latest (or /search, /range) output.
+Typical flow:
+
+  /latest 2
+    -> "About to delete: You spent S$3.98 at STARBUCKS ... Send /confirm to delete, or /cancel to abort."
+  /confirm
+    -> "Transaction deleted."
 
 Other:
 /ping - Check bot is alive
