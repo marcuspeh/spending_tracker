@@ -128,7 +128,8 @@ async def edit_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
         return
 
     expense_service = ExpenseService()
-    txn = await expense_service.edit_transaction(user.id, txn_id, field, value)
+    # Signature: edit_transaction(transaction_id, user_id, field, value) — txn first.
+    txn = await expense_service.edit_transaction(txn_id, user.id, field, value)
 
     if txn:
         await update.message.reply_text(
@@ -256,7 +257,8 @@ async def confirm_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
         return
 
     expense_service = ExpenseService()
-    success = await expense_service.delete_transaction(user.id, txn_id)
+    # Signature: delete_transaction(transaction_id, user_id) — txn first.
+    success = await expense_service.delete_transaction(txn_id, user.id)
     if success:
         _pending_deletes[chat_id].discard(txn_id)
         if not _pending_deletes[chat_id]:
@@ -265,18 +267,6 @@ async def confirm_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
         await update.message.reply_text(f"Transaction deleted.")
         return
 
-    import structlog
-
-    logger = structlog.get_logger()
-    recheck = await expense_service.transaction_repo.get_by_id_for_user(txn_id, user.id)
-    logger.warning(
-        "confirm_ownership_mismatch",
-        chat_id=chat_id,
-        user_id=user.id,
-        txn_id=txn_id,
-        recheck_found=recheck is not None,
-        pending_set=list(_pending_deletes.get(chat_id, set())),
-    )
     await update.message.reply_text("Transaction not found or not owned by you.")
 
 
