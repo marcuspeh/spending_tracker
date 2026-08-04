@@ -137,8 +137,16 @@ async def send_rich_message(bot: Bot, chat_id: int, html: str) -> Any:
     upstream issue #5261, targeting v23), so we hit the raw HTTP API
     through PTB's private ``Bot._post`` helper. This inherits PTB's base
     URL, retries, and token handling.
+
+    The Bot API expects an ``InputRichMessage`` object as the
+    ``rich_message`` field. We pass it as a Python dict; PTB's
+    ``RequestParameter.json_value`` will JSON-encode non-string values
+    correctly when sending the form-encoded request.
     """
     return await bot._post(  # type: ignore[attr-defined]
         "sendRichMessage",
-        data={"chat_id": chat_id, "html": html},
+        data={
+            "chat_id": chat_id,
+            "rich_message": {"html": html},
+        },
     )
