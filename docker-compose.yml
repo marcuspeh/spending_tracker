@@ -5,6 +5,7 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
+    image: spending-tracker:latest
     container_name: spending-tracker
     restart: unless-stopped
     environment:
