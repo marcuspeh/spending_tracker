@@ -265,6 +265,18 @@ async def confirm_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
         await update.message.reply_text(f"Transaction deleted.")
         return
 
+    import structlog
+
+    logger = structlog.get_logger()
+    recheck = await expense_service.transaction_repo.get_by_id_for_user(txn_id, user.id)
+    logger.warning(
+        "confirm_ownership_mismatch",
+        chat_id=chat_id,
+        user_id=user.id,
+        txn_id=txn_id,
+        recheck_found=recheck is not None,
+        pending_set=list(_pending_deletes.get(chat_id, set())),
+    )
     await update.message.reply_text("Transaction not found or not owned by you.")
 
 
