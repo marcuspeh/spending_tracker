@@ -37,9 +37,12 @@ class TransactionRepository:
         ).first()
 
     async def list_latest_for_user(self, user_id: int, count: int = 10) -> list[Transaction]:
+        # Order by transaction_time descending; tie-break by id so two
+        # transactions with the same timestamp come back in a stable
+        # order (newest insertion first).
         return (
             await Transaction.filter(user_id=user_id, deleted_at__isnull=True)
-            .order_by("-transaction_time")
+            .order_by("-transaction_time", "-id")
             .limit(count)
         )
 
