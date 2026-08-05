@@ -8,7 +8,7 @@ from telegram.ext import ContextTypes
 from app.database.enums import PaymentMethod
 from app.database.repositories.transaction import TransactionRepository
 from app.database.repositories.user import UserRepository
-from app.services.expense import ExpenseService
+from app.services.expense import ExpenseService, InvalidEditValue
 from app.telegram.auth import auth_handler
 from app.telegram.handlers._helpers import (
     _pending_deletes,
@@ -129,7 +129,11 @@ async def edit_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
 
     expense_service = ExpenseService()
     # Signature: edit_transaction(transaction_id, user_id, field, value) — txn first.
-    txn = await expense_service.edit_transaction(txn_id, user.id, field, value)
+    try:
+        txn = await expense_service.edit_transaction(txn_id, user.id, field, value)
+    except InvalidEditValue as exc:
+        await update.message.reply_text(str(exc))
+        return
 
     if txn:
         await update.message.reply_text(

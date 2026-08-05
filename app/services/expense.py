@@ -1,5 +1,5 @@
 from datetime import datetime
-from decimal import Decimal
+from decimal import Decimal, InvalidOperation
 from typing import Any
 
 from app.database.enums import PaymentMethod
@@ -13,6 +13,10 @@ from app.utils.timezone import (
     parse_date,
     sgt_to_utc,
 )
+
+
+class InvalidEditValue(ValueError):
+    """Raised when an /edit value can't be coerced to its target type."""
 
 
 class ExpenseService:
@@ -69,10 +73,20 @@ class ExpenseService:
             return None
 
         if field == "amount":
-            value = float(Decimal(str(value)))
+            try:
+                value = float(Decimal(str(value)))
+            except (InvalidOperation, ValueError, TypeError) as exc:
+                raise InvalidEditValue(
+                    f"Invalid amount: {value!r}. Use a number like 12.50 or -5.00 for refunds."
+                ) from exc
         elif field == "transaction_time":
             if isinstance(value, str):
-                value = parse_date(value)
+                try:
+                    value = parse_date(value)
+                except ValueError as exc:
+                    raise InvalidEditValue(
+                        f"Invalid date: {value!r}. Use YYYY-MM-DD."
+                    ) from exc
             value = sgt_to_utc(value)
 
         await self.transaction_repo.update_field(transaction, field, value)
