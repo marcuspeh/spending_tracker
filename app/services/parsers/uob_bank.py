@@ -45,7 +45,7 @@ class UOBBankParser(BankParser):
         r"\bat\s+(\d{1,2}:\d{2}\s*[AP]M)\s+SGT,\s*(\d{1,2}\s+\w+\s+\d{2})",
     )
 
-    def _extract_date(self, body: str) -> datetime:
+    def _extract_date(self, body: str, email: dict[str, Any] | None = None) -> datetime:
         # Prefer the in-body "at TIME SGT, DATE" form.
         m = self._date_re.search(body)
         if m:
@@ -57,7 +57,7 @@ class UOBBankParser(BankParser):
                 if parsed is not None:
                     return parsed.replace(tzinfo=SGT)
         # Fall back to base for other shapes (year-patching included).
-        return super()._extract_date(body)
+        return super()._extract_date(body, email)
 
     def can_parse(self, email: dict[str, Any]) -> bool:
         body = email.get("body", "") or ""

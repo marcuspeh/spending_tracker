@@ -124,6 +124,10 @@ class GmailPoller:
             "from": email.from_,
             "to": list(email.to),
             "cc": list(email.cc),
+            # Email's `Date:` header (tz-aware UTC). Used as a fallback
+            # for transactions whose body has no time component (e.g.
+            # UOB CC alerts that say "on 04/08/26" but no clock time).
+            "date": email.date,
         }
 
         try:

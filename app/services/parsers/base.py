@@ -283,9 +283,18 @@ class BankParser(BaseParser):
         m = self._merchant_re.search(body)
         return m.group(1).strip() if m else (self.name or "Transaction")
 
-    def _extract_date(self, body: str) -> datetime:
+    def _extract_date(self, body: str, email: dict[str, Any] | None = None) -> datetime:
+        """Extract the transaction's timestamp.
+
+        Resolution order:
+        1. Body regex matches with a time-of-day → use it as-is.
+        2. Body regex matches but no time → keep the body's date and
+           overlay the time-of-day from the email's `Date:` header (the
+           body's date is the actual transaction date).
+        3. No match → use the email's `Date:` header, fall back to now().
+        """
         if not self._date_patterns:
-            return datetime.now(SGT)
+            return self._fallback_date(email)
         for pattern, formats in self._date_patterns:
             m = pattern.search(body)
             if not m:
@@ -295,13 +304,73 @@ class BankParser(BaseParser):
                 parsed = _strptime(text, fmt)
                 if parsed is not None:
                     # Patch year when the body format omits it (e.g.
-                    # "dated 16 Jul" → year 1900 placeholder).
+                    # "dated 16 Jul" → year 1900 placeholder). The
+                    # body itself rarely contains a `Date:` header, so
+                    # also fall back to the email's `Date:` header.
                     if parsed.year == 1900:
-                        ym = self._iso_date_re.search(body)
-                        if ym:
-                            parsed = parsed.replace(year=int(ym.group(1)))
-                    return parsed.replace(tzinfo=SGT)
-        return datetime.now(SGT)
+                        year = self._resolve_year(body, email)
+                        if year is not None:
+                            parsed = parsed.replace(year=year)
+                    parsed = parsed.replace(tzinfo=SGT)
+                    if self._has_no_time_component(parsed):
+                        # Body has only a date. Overlay the time-of-day
+                        # from the email's `Date:` header so the row
+                        # sorts correctly against same-day transactions.
+                        header_dt = self._email_date(email)
+                        if header_dt is not None:
+                            parsed = parsed.replace(
+                                hour=header_dt.hour,
+                                minute=header_dt.minute,
+                                second=header_dt.second,
+                            )
+                    return parsed
+        return self._fallback_date(email)
+
+    def _resolve_year(self, body: str, email: dict[str, Any] | None) -> int | None:
+        """Find the year to backfill a year-less body date.
+
+        Sources, in order:
+        1. ``Date: YYYY-MM-DD`` (or similar) in the body itself.
+        2. The email's ``Date:`` header.
+        """
+        ym = self._iso_date_re.search(body)
+        if ym:
+            return int(ym.group(1))
+        header_dt = self._email_date(email)
+        if header_dt is not None:
+            return header_dt.year
+        return None
+
+    @staticmethod
+    def _has_no_time_component(parsed: datetime) -> bool:
+        """True when the parsed timestamp has no meaningful time-of-day
+        (i.e. it's sitting at 00:00:00, which is the strptime default)."""
+        return (
+            parsed.hour == 0
+            and parsed.minute == 0
+            and parsed.second == 0
+            and parsed.microsecond == 0
+        )
+
+    @staticmethod
+    def _email_date(email: dict[str, Any] | None) -> datetime | None:
+        """Return the email's `Date:` header as a tz-aware SGT datetime,
+        or None if it's missing / not a datetime."""
+        if not email:
+            return None
+        raw = email.get("date")
+        if not isinstance(raw, datetime):
+            return None
+        if raw.tzinfo is None:
+            return raw.replace(tzinfo=SGT)
+        return raw.astimezone(SGT)
+
+    @staticmethod
+    def _fallback_date(email: dict[str, Any] | None) -> datetime:
+        """Last-resort timestamp when no date pattern matched: prefer the
+        email's `Date:` header, otherwise now."""
+        header = BankParser._email_date(email)
+        return header if header is not None else datetime.now(SGT)
 
     # ---------- shared parse() ----------
 
@@ -343,5 +412,5 @@ class BankParser(BaseParser):
                 is_refund=is_refund,
             ),
             payment_method=method,
-            transaction_time=self._extract_date(body),
+            transaction_time=self._extract_date(body, email),
         )
