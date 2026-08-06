@@ -99,17 +99,24 @@ class ExpenseService:
     async def get_today_spending(self, user_id: int) -> float:
         """Get today's total spending (signed, including refunds)."""
         start, end = get_today_window()
-        return await self.transaction_repo.sum_amount(user_id, start, end)
+        # Window is SGT; the DB stores UTC. Convert before querying.
+        return await self.transaction_repo.sum_amount(
+            user_id, sgt_to_utc(start), sgt_to_utc(end)
+        )
 
     async def get_week_spending(self, user_id: int) -> float:
         """Get this week's total spending (signed, including refunds)."""
         start, end = get_week_window()
-        return await self.transaction_repo.sum_amount(user_id, start, end)
+        return await self.transaction_repo.sum_amount(
+            user_id, sgt_to_utc(start), sgt_to_utc(end)
+        )
 
     async def get_month_spending(self, user_id: int) -> float:
         """Get this month's total spending (signed, including refunds)."""
         start, end = get_month_window()
-        return await self.transaction_repo.sum_amount(user_id, start, end)
+        return await self.transaction_repo.sum_amount(
+            user_id, sgt_to_utc(start), sgt_to_utc(end)
+        )
 
     async def search_transactions(self, user_id: int, merchant_substring: str) -> list[Transaction]:
         """Search transactions by merchant name (case-insensitive)."""
@@ -133,7 +140,8 @@ class ExpenseService:
             end_date = parse_date(end_date)
 
         start_sgt, end_sgt = get_range_window(start_date, end_date)
+        # Convert SGT window to UTC — the DB stores transaction_time as UTC.
         rows, total_count = await self.transaction_repo.list_in_range_for_user(
-            user_id, start_sgt, end_sgt
+            user_id, sgt_to_utc(start_sgt), sgt_to_utc(end_sgt)
         )
         return rows, total_count, total_count > 200
