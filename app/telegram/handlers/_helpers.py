@@ -86,23 +86,30 @@ def _escape_html(text: str) -> str:
     )
 
 
-def render_latest_table(transactions: list) -> str:
+def render_latest_table(transactions: list, _title: str = "Latest transactions") -> str:
     """Render ``transactions`` as a Telegram Rich Message table.
 
     Uses the Bot API 10.1 ``sendRichMessage`` HTML-style markup
     (``<table>``, ``<tr>``, ``<th>``, ``<td>``) which renders natively in
     modern Telegram clients — no code fences, no manual padding.
 
+    When ``transactions`` is empty the title is rendered as a paragraph
+    instead, so an empty filtered list still shows the user what they
+    searched for.
+
     Returns the HTML string ready to pass to ``send_rich_message``.
     """
     if not transactions:
-        return "<p>No transactions found.</p>"
+        return f"<p>{_escape_html(_title)}</p><p>No transactions found.</p>"
 
     def cell(text: str, *, header: bool = False) -> str:
         tag = "th" if header else "td"
         return f"<{tag}>{_escape_html(text)}</{tag}>"
 
     headers = ["#", "DATE", "TIME", "AMOUNT", "METHOD", "MERCHANT"]
+    has_any_tag = any(getattr(txn, "tag", None) for txn in transactions)
+    if has_any_tag:
+        headers.append("TAG")
     head_row = "<tr>" + "".join(cell(h, header=True) for h in headers) + "</tr>"
 
     body_rows = []
@@ -110,7 +117,7 @@ def render_latest_table(transactions: list) -> str:
         time_sgt = utc_to_sgt(txn.transaction_time)
         sign = "-" if txn.amount < 0 else "+"
         amount = f"{sign}{format_amount(txn.amount)}"
-        body_rows.append(
+        row = (
             "<tr>"
             + cell(str(offset))
             + cell(time_sgt.strftime("%d %b"))
@@ -118,11 +125,14 @@ def render_latest_table(transactions: list) -> str:
             + cell(amount)
             + cell(_truncate(txn.payment_method.value, 22))
             + cell(_truncate(txn.merchant or "", 32))
-            + "</tr>"
         )
+        if has_any_tag:
+            row += cell(_truncate(getattr(txn, "tag", None) or "", 16))
+        row += "</tr>"
+        body_rows.append(row)
 
     return (
-        "<h2>Latest transactions</h2>"
+        f"<h2>{_escape_html(_title)}</h2>"
         "<table is_bordered=\"true\" is_striped=\"true\">"
         "<thead>" + head_row + "</thead>"
         "<tbody>" + "".join(body_rows) + "</tbody>"

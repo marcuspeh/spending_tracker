@@ -34,12 +34,13 @@ Viewing transactions:
 
 Managing transactions:
 /add <amount> <merchant> [description] [date] - Add manual transaction
-/edit <index> <field> <value> - Edit a transaction (amount, merchant, description, transaction_time)
+/edit <index> <field> <value> - Edit a transaction (amount, merchant, description, transaction_time, tag)
 /delete <index> - Start delete confirmation
 /confirm - Confirm a pending delete (omit the index)
 /confirm <index> - Confirm a specific pending delete
 /cancel - Cancel all pending deletes
 /cancel <index> - Cancel a specific pending delete
+/tag <index> [<tag>] - Set or clear the tag on a transaction. Tags are free-form (e.g. coffee, transport, vacation).
 
 Typical flow:
 
@@ -47,6 +48,13 @@ Typical flow:
     -> "About to delete: You spent S$3.98 at STARBUCKS ... Send /confirm to delete, or /cancel to abort."
   /confirm
     -> "Transaction deleted."
+
+  /latest
+    -> [rich table]
+  /tag 1 coffee
+    -> "Tag set: coffee"
+  /week coffee
+    -> "This week's spending (tag: coffee): S$15.30"
 
 Other:
 /ping - Check bot is alive

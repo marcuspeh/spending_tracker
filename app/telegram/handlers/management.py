@@ -310,3 +310,78 @@ async def cancel_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
         await update.message.reply_text("Pending delete cancelled.")
     else:
         await update.message.reply_text("No pending delete for that row.")
+
+
+async def tag_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Handle /tag <index> [<tag>] command.
+
+    - ``/tag <index> <tag>`` — set the tag on the transaction at that
+      index from the most recent /latest, /search, or /range. The tag is
+      lowercased and trimmed; max 64 chars.
+    - ``/tag <index>`` (no tag) — clear the tag on that transaction.
+
+    Tags are free-form per user. Filtering with /latest /today /week
+    /thismonth /range /search supports an optional tag argument.
+    """
+    if not await auth_handler(update, context):
+        return
+
+    args = context.args
+    if not args:
+        await update.message.reply_text(
+            "Usage:\n"
+            "  /tag <index> <tag>   — set/overwrite the tag\n"
+            "  /tag <index>         — clear the tag\n"
+            "  /tag <index> coffee_daily\n"
+            "Filter with: /latest [count] [tag], /today [tag], /week [tag], "
+            "/thismonth [tag], /range <start> <end> [tag], /search <merchant> [tag]"
+        )
+        return
+
+    chat_id = update.effective_chat.id
+    index_or_id = args[0]
+    tag_value = " ".join(args[1:]).strip()
+
+    # Resolve the index against the most recent list. If the user typed a
+    # raw DB id, fall back to that — it's occasionally useful for power
+    # users even though indexes are the primary UX.
+    from app.database.repositories.transaction import TransactionRepository
+
+    txn_id = resolve_recent(chat_id, index_or_id)
+    if txn_id is None:
+        try:
+            txn_id = int(index_or_id)
+        except ValueError:
+            await update.message.reply_text(
+                "Invalid index. Run /latest, /search, or /range first to see "
+                "the list, then use the number from that list."
+            )
+            return
+
+    user_repo = UserRepository()
+    user = await user_repo.get_by_chat_id(chat_id)
+    if not user:
+        await update.message.reply_text("User not found.")
+        return
+
+    # Empty tag → clear.
+    normalized_tag = tag_value.lower() if tag_value else None
+    if normalized_tag and len(normalized_tag) > 64:
+        await update.message.reply_text(
+            "Tag is too long (max 64 characters)."
+        )
+        return
+
+    expense_service = ExpenseService()
+    txn = await expense_service.set_tag(txn_id, user.id, normalized_tag)
+    if not txn:
+        await update.message.reply_text("Transaction not found.")
+        return
+
+    # Reload to get the stored tag (the in-memory object might not have
+    # refreshed after update_field).
+    txn = await TransactionRepository().get_by_id_for_user(txn_id, user.id)
+    if normalized_tag is None:
+        await update.message.reply_text("Tag cleared.")
+    else:
+        await update.message.reply_text(f"Tag set: {normalized_tag}")

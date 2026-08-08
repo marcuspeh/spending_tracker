@@ -18,6 +18,7 @@ from app.telegram.handlers import (
     range_handler,
     search_handler,
     start_handler,
+    tag_handler,
     today_handler,
     week_handler,
 )
@@ -56,6 +57,7 @@ class TelegramBot:
         self._app.add_handler(CommandHandler("delete", delete_handler))
         self._app.add_handler(CommandHandler("confirm", confirm_handler))
         self._app.add_handler(CommandHandler("cancel", cancel_handler))
+        self._app.add_handler(CommandHandler("tag", tag_handler))
 
         await self._app.initialize()
         await self._app.start()

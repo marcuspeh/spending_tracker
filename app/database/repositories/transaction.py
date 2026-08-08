@@ -2,9 +2,20 @@ from datetime import datetime, timezone
 from decimal import Decimal
 
 from tortoise.functions import Coalesce, Sum
+from tortoise.queryset import QuerySet
 
 from app.database.enums import PaymentMethod
 from app.database.models.transaction import Transaction
+
+
+def _normalize_tag(tag: str | None) -> str | None:
+    """Lowercase + strip a tag for storage / comparison. ``None`` and ''
+    both return ``None`` so the optional filter becomes a no-op."""
+
+    if tag is None:
+        return None
+    cleaned = tag.strip().lower()
+    return cleaned or None
 
 
 class TransactionRepository:
@@ -16,6 +27,7 @@ class TransactionRepository:
         payment_method: PaymentMethod,
         transaction_time: datetime,
         description: str | None = None,
+        tag: str | None = None,
     ) -> Transaction:
         if amount is None:
             amount = Decimal("0")
@@ -28,6 +40,7 @@ class TransactionRepository:
             payment_method=payment_method,
             transaction_time=transaction_time,
             description=description,
+            tag=_normalize_tag(tag),
         )
         return transaction
 
@@ -36,12 +49,24 @@ class TransactionRepository:
             id=transaction_id, user_id=user_id, deleted_at__isnull=True
         ).first()
 
-    async def list_latest_for_user(self, user_id: int, count: int = 10) -> list[Transaction]:
+    def _base_filter(self, user_id: int, tag: str | None = None) -> QuerySet:
+        """Build the standard ``user_id + not-deleted`` filter plus an
+        optional exact-match tag filter (case-insensitive)."""
+
+        qs = Transaction.filter(user_id=user_id, deleted_at__isnull=True)
+        normalized = _normalize_tag(tag)
+        if normalized is not None:
+            qs = qs.filter(tag=normalized)
+        return qs
+
+    async def list_latest_for_user(
+        self, user_id: int, count: int = 10, tag: str | None = None
+    ) -> list[Transaction]:
         # Order by transaction_time descending; tie-break by id so two
         # transactions with the same timestamp come back in a stable
         # order (newest insertion first).
         return (
-            await Transaction.filter(user_id=user_id, deleted_at__isnull=True)
+            await self._base_filter(user_id, tag)
             .order_by("-transaction_time", "-id")
             .limit(count)
         )
@@ -52,30 +77,23 @@ class TransactionRepository:
         start_date: datetime,
         end_date: datetime,
         limit: int = 201,
+        tag: str | None = None,
     ) -> tuple[list[Transaction], int]:
-        # Count total first
-        total_count = await Transaction.filter(
-            user_id=user_id,
-            deleted_at__isnull=True,
+        window = self._base_filter(user_id, tag).filter(
             transaction_time__gte=start_date,
             transaction_time__lte=end_date,
-        ).count()
+        )
+        total_count = await window.count()
 
-        # Get rows with limit+1 to detect truncation
         rows = (
-            await Transaction.filter(
-                user_id=user_id,
-                deleted_at__isnull=True,
-                transaction_time__gte=start_date,
-                transaction_time__lte=end_date,
-            )
-            .order_by("-transaction_time")
-            .limit(limit + 1)
+            await window.order_by("-transaction_time").limit(limit + 1)
         )
 
         return rows[:limit], total_count
 
     async def update_field(self, transaction: Transaction, field: str, value) -> None:
+        if field == "tag":
+            value = _normalize_tag(value)
         setattr(transaction, field, value)
         await transaction.save()
 
@@ -88,13 +106,14 @@ class TransactionRepository:
         user_id: int,
         start: datetime,
         end: datetime,
+        tag: str | None = None,
     ) -> float:
         """Sum signed amounts in [start, end] (UTC). Caller passes SGT
-        windows converted to UTC via app.utils.timezone.sgt_to_utc()."""
+        windows converted to UTC via app.utils.timezone.sgt_to_utc().
+        Optional ``tag`` filters to a single tag (case-insensitive)."""
         result = (
-            await Transaction.filter(
-                user_id=user_id,
-                deleted_at__isnull=True,
+            await self._base_filter(user_id, tag)
+            .filter(
                 transaction_time__gte=start,
                 transaction_time__lte=end,
             )
@@ -104,11 +123,15 @@ class TransactionRepository:
         total = result[0] if result else 0
         return float(total) if total else 0.0
 
-    async def search_transactions(self, user_id: int, merchant_substring: str) -> list[Transaction]:
+    async def search_transactions(
+        self,
+        user_id: int,
+        merchant_substring: str,
+        tag: str | None = None,
+    ) -> list[Transaction]:
         return (
-            await Transaction.filter(
-                user_id=user_id, deleted_at__isnull=True, merchant__icontains=merchant_substring
-            )
+            await self._base_filter(user_id, tag)
+            .filter(merchant__icontains=merchant_substring)
             .order_by("-transaction_time")
             .limit(200)
         )
