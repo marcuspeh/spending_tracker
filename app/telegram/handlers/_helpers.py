@@ -110,6 +110,9 @@ def render_latest_table(transactions: list, _title: str = "Latest transactions")
     has_any_tag = any(getattr(txn, "tag", None) for txn in transactions)
     if has_any_tag:
         headers.append("TAG")
+    has_any_category = any(getattr(txn, "category", None) for txn in transactions)
+    if has_any_category:
+        headers.append("CATEGORY")
     head_row = "<tr>" + "".join(cell(h, header=True) for h in headers) + "</tr>"
 
     body_rows = []
@@ -128,6 +131,8 @@ def render_latest_table(transactions: list, _title: str = "Latest transactions")
         )
         if has_any_tag:
             row += cell(_truncate(getattr(txn, "tag", None) or "", 16))
+        if has_any_category:
+            row += cell(_truncate(getattr(txn, "category", None) or "", 14))
         row += "</tr>"
         body_rows.append(row)
 

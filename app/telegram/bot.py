@@ -8,6 +8,7 @@ from app.telegram.auth import auth_middleware
 from app.telegram.handlers import (
     add_handler,
     cancel_handler,
+    categorize_handler,
     confirm_handler,
     delete_handler,
     edit_handler,
@@ -58,6 +59,7 @@ class TelegramBot:
         self._app.add_handler(CommandHandler("confirm", confirm_handler))
         self._app.add_handler(CommandHandler("cancel", cancel_handler))
         self._app.add_handler(CommandHandler("tag", tag_handler))
+        self._app.add_handler(CommandHandler("categorize", categorize_handler))
 
         await self._app.initialize()
         await self._app.start()

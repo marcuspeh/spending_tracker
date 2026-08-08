@@ -12,6 +12,7 @@ from app.telegram.handlers.general import (
 from app.telegram.handlers.management import (
     add_handler,
     cancel_handler,
+    categorize_handler,
     confirm_handler,
     delete_handler,
     edit_handler,
@@ -29,6 +30,7 @@ from app.telegram.handlers.queries import (
 __all__ = [
     "add_handler",
     "cancel_handler",
+    "categorize_handler",
     "confirm_handler",
     "delete_handler",
     "edit_handler",

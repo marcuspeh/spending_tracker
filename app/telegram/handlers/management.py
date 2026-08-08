@@ -385,3 +385,64 @@ async def tag_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
         await update.message.reply_text("Tag cleared.")
     else:
         await update.message.reply_text(f"Tag set: {normalized_tag}")
+
+
+async def categorize_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Handle /categorize <index> command.
+
+    Re-runs the LLM categorizer on a single transaction and updates
+    the stored ``category``. Use when:
+    - the LLM failed during insert (category is NULL),
+    - the LLM picked the wrong category,
+    - the merchant string has changed and you want a fresh pick.
+    """
+    if not await auth_handler(update, context):
+        return
+
+    args = context.args
+    if not args:
+        await update.message.reply_text(
+            "Usage: /categorize <index>\n"
+            "Re-runs the LLM categorizer on the transaction at that index."
+        )
+        return
+
+    chat_id = update.effective_chat.id
+    index_or_id = args[0]
+
+    from app.database.repositories.transaction import TransactionRepository
+
+    txn_id = resolve_recent(chat_id, index_or_id)
+    if txn_id is None:
+        try:
+            txn_id = int(index_or_id)
+        except ValueError:
+            await update.message.reply_text(
+                "Invalid index. Run /latest, /search, or /range first to see "
+                "the list, then use the number from that list."
+            )
+            return
+
+    user_repo = UserRepository()
+    user = await user_repo.get_by_chat_id(chat_id)
+    if not user:
+        await update.message.reply_text("User not found.")
+        return
+
+    expense_service = ExpenseService()
+    txn = await expense_service.recategorize(txn_id, user.id)
+    if not txn:
+        await update.message.reply_text("Transaction not found.")
+        return
+
+    # Reload to reflect the updated category.
+    txn = await TransactionRepository().get_by_id_for_user(txn_id, user.id)
+    if txn.category:
+        await update.message.reply_text(
+            f"Category: {txn.category}\nMerchant: {txn.merchant}"
+        )
+    else:
+        await update.message.reply_text(
+            "Could not generate a category (LLM not configured or rejected). "
+            "Set one manually with /edit <index> category <value>."
+        )

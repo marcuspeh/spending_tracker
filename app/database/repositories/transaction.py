@@ -11,10 +11,17 @@ from app.database.models.transaction import Transaction
 def _normalize_tag(tag: str | None) -> str | None:
     """Lowercase + strip a tag for storage / comparison. ``None`` and ''
     both return ``None`` so the optional filter becomes a no-op."""
-
     if tag is None:
         return None
     cleaned = tag.strip().lower()
+    return cleaned or None
+
+
+def _normalize_category(category: str | None) -> str | None:
+    """Lowercase + strip a category. ``None`` and '' both return ``None``."""
+    if category is None:
+        return None
+    cleaned = category.strip().lower()
     return cleaned or None
 
 
@@ -28,6 +35,7 @@ class TransactionRepository:
         transaction_time: datetime,
         description: str | None = None,
         tag: str | None = None,
+        category: str | None = None,
     ) -> Transaction:
         if amount is None:
             amount = Decimal("0")
@@ -41,6 +49,7 @@ class TransactionRepository:
             transaction_time=transaction_time,
             description=description,
             tag=_normalize_tag(tag),
+            category=_normalize_category(category),
         )
         return transaction
 
@@ -94,6 +103,8 @@ class TransactionRepository:
     async def update_field(self, transaction: Transaction, field: str, value) -> None:
         if field == "tag":
             value = _normalize_tag(value)
+        elif field == "category":
+            value = _normalize_category(value)
         setattr(transaction, field, value)
         await transaction.save()
 

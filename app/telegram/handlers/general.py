@@ -41,6 +41,9 @@ Managing transactions:
 /cancel - Cancel all pending deletes
 /cancel <index> - Cancel a specific pending delete
 /tag <index> [<tag>] - Set or clear the tag on a transaction. Tags are free-form (e.g. coffee, transport, vacation).
+/categorize <index> - Re-run the LLM categorizer on a transaction.
+
+Every transaction is auto-categorized (food, transport, groceries, shopping, bills, subscriptions, health, entertainment, travel, transfers, fees, refunds, cash, other) on insert. If the LLM is misconfigured or fails, the category is left NULL — use /categorize to retry, or /edit <index> category <value> to set one manually.
 
 Typical flow:
 
