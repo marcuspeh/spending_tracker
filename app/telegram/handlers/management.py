@@ -345,8 +345,6 @@ async def tag_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
     # Resolve the index against the most recent list. If the user typed a
     # raw DB id, fall back to that — it's occasionally useful for power
     # users even though indexes are the primary UX.
-    from app.database.repositories.transaction import TransactionRepository
-
     txn_id = resolve_recent(chat_id, index_or_id)
     if txn_id is None:
         try:
@@ -409,8 +407,6 @@ async def categorize_handler(update: Update, context: ContextTypes.DEFAULT_TYPE)
 
     chat_id = update.effective_chat.id
     index_or_id = args[0]
-
-    from app.database.repositories.transaction import TransactionRepository
 
     txn_id = resolve_recent(chat_id, index_or_id)
     if txn_id is None:

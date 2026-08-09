@@ -1,3 +1,4 @@
+import re
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from datetime import datetime
@@ -65,9 +66,7 @@ def _strptime(text: str, fmt: str) -> datetime | None:
     ``%S`` (second), ``%p`` (AM/PM). Anything else is matched literally.
     Returns ``None`` on mismatch.
     """
-    import re as _re
-
-    token_re = _re.compile(r"%([dmbyBHIMSYp])")
+    token_re = compile(r"%([dmbyBHIMSYp])")
     fmt_pos = 0
     text_pos = 0
     day = month = year = hour = minute = second = None
@@ -86,7 +85,7 @@ def _strptime(text: str, fmt: str) -> datetime | None:
             text_pos += len(literal)
         tok = m.group(1)
         if tok in ("d", "m"):
-            mm = _re.match(r"(\d{1,2})", text[text_pos:])
+            mm = re.match(r"(\d{1,2})", text[text_pos:])
             if not mm:
                 return None
             value = int(mm.group(1))
@@ -96,7 +95,7 @@ def _strptime(text: str, fmt: str) -> datetime | None:
                 month = value
             text_pos += mm.end()
         elif tok in ("b", "B"):
-            mm = _re.match(r"([A-Za-z]{3,9})", text[text_pos:])
+            mm = re.match(r"([A-Za-z]{3,9})", text[text_pos:])
             if not mm:
                 return None
             month = _MONTH_NUMBERS.get(mm.group(1).upper()[:3])
@@ -104,44 +103,44 @@ def _strptime(text: str, fmt: str) -> datetime | None:
                 return None
             text_pos += mm.end()
         elif tok == "y":
-            mm = _re.match(r"(\d{2})", text[text_pos:])
+            mm = re.match(r"(\d{2})", text[text_pos:])
             if not mm:
                 return None
             yy = int(mm.group(1))
             year = 2000 + yy if yy < 70 else 1900 + yy
             text_pos += mm.end()
         elif tok == "Y":
-            mm = _re.match(r"(\d{4})", text[text_pos:])
+            mm = re.match(r"(\d{4})", text[text_pos:])
             if not mm:
                 return None
             year = int(mm.group(1))
             text_pos += mm.end()
         elif tok == "H":
-            mm = _re.match(r"(\d{1,2})", text[text_pos:])
+            mm = re.match(r"(\d{1,2})", text[text_pos:])
             if not mm:
                 return None
             hour = int(mm.group(1))
             text_pos += mm.end()
         elif tok == "I":
-            mm = _re.match(r"(\d{1,2})", text[text_pos:])
+            mm = re.match(r"(\d{1,2})", text[text_pos:])
             if not mm:
                 return None
             hour = int(mm.group(1))
             text_pos += mm.end()
         elif tok == "M":
-            mm = _re.match(r"(\d{1,2})", text[text_pos:])
+            mm = re.match(r"(\d{1,2})", text[text_pos:])
             if not mm:
                 return None
             minute = int(mm.group(1))
             text_pos += mm.end()
         elif tok == "S":
-            mm = _re.match(r"(\d{1,2})", text[text_pos:])
+            mm = re.match(r"(\d{1,2})", text[text_pos:])
             if not mm:
                 return None
             second = int(mm.group(1))
             text_pos += mm.end()
         elif tok == "p":
-            mm = _re.match(r"(AM|PM|am|pm)", text[text_pos:])
+            mm = re.match(r"(AM|PM|am|pm)", text[text_pos:])
             if not mm:
                 return None
             # Convert 12-hour + AM/PM into 24-hour hour.

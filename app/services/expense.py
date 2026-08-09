@@ -5,6 +5,7 @@ from typing import Any
 from app.database.enums import PaymentMethod
 from app.database.models.transaction import Transaction
 from app.database.repositories.transaction import TransactionRepository
+from app.services.categorizer import categorize
 from app.utils.timezone import (
     get_month_window,
     get_range_window,
@@ -47,8 +48,6 @@ class ExpenseService:
         transaction_time_utc = sgt_to_utc(transaction_time)
 
         # Auto-categorize. Never raise — fall back to NULL on failure.
-        from app.services.categorizer import categorize
-
         category: str | None = None
         try:
             category = await categorize(merchant)
@@ -138,8 +137,6 @@ class ExpenseService:
         doesn't exist (or isn't owned by the user). On LLM failure the
         row is left untouched (category stays NULL).
         """
-        from app.services.categorizer import categorize
-
         transaction = await self.transaction_repo.get_by_id_for_user(
             transaction_id, user_id
         )

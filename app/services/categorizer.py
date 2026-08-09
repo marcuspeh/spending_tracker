@@ -19,6 +19,9 @@ from typing import Final
 import httpx
 
 from app.config.settings import get_settings
+from app.database.repositories.merchant_category_cache import (
+    MerchantCategoryCacheRepository,
+)
 from app.services.merchant_normalizer import normalize_merchant
 
 logger = logging.getLogger(__name__)
@@ -108,10 +111,6 @@ async def categorize(merchant: str) -> str | None:
         return None
 
     # Read-through cache. Skip the LLM entirely on a hit.
-    from app.database.repositories.merchant_category_cache import (
-        MerchantCategoryCacheRepository,
-    )
-
     cache = MerchantCategoryCacheRepository()
     cache_key = _normalize_merchant_key(merchant)
     cached = await cache.get(cache_key)

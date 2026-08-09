@@ -100,14 +100,15 @@ def settings():
 def cache():
     """Mock MerchantCategoryCacheRepository with no cache hits.
 
-    The categorizer imports the class lazily inside the function body,
-    so we patch the actual import path the categorizer uses.
+    The categorizer imports the class at module load time, so we patch
+    the imported name on the categorizer module itself. That overrides
+    the binding the categorizer actually uses.
     """
-    from app.database.repositories import merchant_category_cache
+    from app.services import categorizer
 
     fake = _MockCache()
     with patch.object(
-        merchant_category_cache, "MerchantCategoryCacheRepository", return_value=fake
+        categorizer, "MerchantCategoryCacheRepository", return_value=fake
     ):
         yield fake
 
@@ -172,12 +173,12 @@ class TestCache:
 
     @pytest.mark.asyncio
     async def test_cache_hit_skips_llm(self, settings):
-        from app.database.repositories import merchant_category_cache
+        from app.services import categorizer
 
         # Cache returns "food" upfront — the LLM must NOT be called.
         cache = _MockCache(hit="food")
         with patch.object(
-            merchant_category_cache, "MerchantCategoryCacheRepository", return_value=cache
+            categorizer, "MerchantCategoryCacheRepository", return_value=cache
         ):
             mock_client = _MockClient(_mock_response("transport"))
             with patch(
@@ -192,11 +193,11 @@ class TestCache:
 
     @pytest.mark.asyncio
     async def test_cache_miss_calls_llm_and_upserts(self, settings):
-        from app.database.repositories import merchant_category_cache
+        from app.services import categorizer
 
         cache = _MockCache()
         with patch.object(
-            merchant_category_cache, "MerchantCategoryCacheRepository", return_value=cache
+            categorizer, "MerchantCategoryCacheRepository", return_value=cache
         ):
             with patch(
                 "app.services.categorizer.httpx.AsyncClient",
@@ -210,11 +211,11 @@ class TestCache:
 
     @pytest.mark.asyncio
     async def test_cache_key_is_normalized(self, settings):
-        from app.database.repositories import merchant_category_cache
+        from app.services import categorizer
 
         cache = _MockCache()
         with patch.object(
-            merchant_category_cache, "MerchantCategoryCacheRepository", return_value=cache
+            categorizer, "MerchantCategoryCacheRepository", return_value=cache
         ):
             with patch(
                 "app.services.categorizer.httpx.AsyncClient",
@@ -229,11 +230,11 @@ class TestCache:
 
     @pytest.mark.asyncio
     async def test_cache_upsert_skipped_on_out_of_set(self, settings):
-        from app.database.repositories import merchant_category_cache
+        from app.services import categorizer
 
         cache = _MockCache()
         with patch.object(
-            merchant_category_cache, "MerchantCategoryCacheRepository", return_value=cache
+            categorizer, "MerchantCategoryCacheRepository", return_value=cache
         ):
             with patch(
                 "app.services.categorizer.httpx.AsyncClient",
@@ -247,11 +248,11 @@ class TestCache:
 
     @pytest.mark.asyncio
     async def test_cache_upsert_failure_does_not_break_caller(self, settings):
-        from app.database.repositories import merchant_category_cache
+        from app.services import categorizer
 
         cache = _MockCache(raise_on_upsert=True)
         with patch.object(
-            merchant_category_cache, "MerchantCategoryCacheRepository", return_value=cache
+            categorizer, "MerchantCategoryCacheRepository", return_value=cache
         ):
             with patch(
                 "app.services.categorizer.httpx.AsyncClient",
@@ -265,11 +266,11 @@ class TestCache:
 
     @pytest.mark.asyncio
     async def test_empty_merchant_returns_none_no_cache_call(self, settings):
-        from app.database.repositories import merchant_category_cache
+        from app.services import categorizer
 
         cache = _MockCache()
         with patch.object(
-            merchant_category_cache, "MerchantCategoryCacheRepository", return_value=cache
+            categorizer, "MerchantCategoryCacheRepository", return_value=cache
         ):
             result = await categorize("")
 
