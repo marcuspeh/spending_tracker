@@ -106,13 +106,10 @@ def render_latest_table(transactions: list, _title: str = "Latest transactions")
         tag = "th" if header else "td"
         return f"<{tag}>{_escape_html(text)}</{tag}>"
 
-    headers = ["#", "DATE", "TIME", "AMOUNT", "METHOD", "MERCHANT"]
+    headers = ["#", "DATE", "TIME", "AMOUNT", "METHOD", "MERCHANT", "CATEGORY"]
     has_any_tag = any(getattr(txn, "tag", None) for txn in transactions)
     if has_any_tag:
         headers.append("TAG")
-    has_any_category = any(getattr(txn, "category", None) for txn in transactions)
-    if has_any_category:
-        headers.append("CATEGORY")
     head_row = "<tr>" + "".join(cell(h, header=True) for h in headers) + "</tr>"
 
     body_rows = []
@@ -128,11 +125,10 @@ def render_latest_table(transactions: list, _title: str = "Latest transactions")
             + cell(amount)
             + cell(_truncate(txn.payment_method.value, 22))
             + cell(_truncate(txn.merchant or "", 32))
+            + cell(_truncate(getattr(txn, "category", None) or "", 14))
         )
         if has_any_tag:
             row += cell(_truncate(getattr(txn, "tag", None) or "", 16))
-        if has_any_category:
-            row += cell(_truncate(getattr(txn, "category", None) or "", 14))
         row += "</tr>"
         body_rows.append(row)
 
