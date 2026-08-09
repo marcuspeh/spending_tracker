@@ -87,8 +87,12 @@ def _escape_html(text: str) -> str:
     )
 
 
-def render_latest_table(transactions: list, _title: str = "Latest transactions") -> str:
-    """Render ``transactions`` as a Telegram Rich Message table.
+def render_transactions_table(transactions: list, _title: str = "Transactions") -> str:
+    """Render a list of transactions as a Telegram Rich Message table.
+
+    Used by every command that returns a list of transactions
+    (``/latest``, ``/search``, ``/range``) so the visual layout is
+    identical regardless of which command was invoked.
 
     Uses the Bot API 10.1 ``sendRichMessage`` HTML-style markup
     (``<table>``, ``<tr>``, ``<th>``, ``<td>``) which renders natively in
@@ -140,6 +144,12 @@ def render_latest_table(transactions: list, _title: str = "Latest transactions")
         "<tbody>" + "".join(body_rows) + "</tbody>"
         "</table>"
     )
+
+
+# Backwards-compatible alias — the function used to be named
+# ``render_latest_table`` but is now generic across all list-returning
+# commands. Older call sites keep working.
+render_latest_table = render_transactions_table
 
 
 async def send_rich_message(bot: Bot, chat_id: int, html: str) -> Any:

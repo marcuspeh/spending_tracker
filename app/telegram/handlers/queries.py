@@ -11,7 +11,7 @@ from app.telegram.handlers._helpers import (
     format_transaction,
     format_transactions,
     remember_recent,
-    render_latest_table,
+    render_transactions_table,
     send_rich_message,
 )
 from app.utils.timezone import parse_date
@@ -73,7 +73,7 @@ async def latest_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
     remember_recent(chat_id, [t.id for t in transactions])
 
     title = "Latest transactions" if tag is None else f'Latest transactions (tag: {tag})'
-    html = render_latest_table(transactions, _title=title)
+    html = render_transactions_table(transactions, _title=title)
     try:
         await send_rich_message(context.bot, chat_id, html)
     except Exception as e:
@@ -197,17 +197,35 @@ async def range_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
         if tag is None
         else f'Transactions from {start_str} to {end_str} (tag: {tag})'
     )
-    text = f"{title}:\n\n"
-    if transactions:
-        text += "\n".join(format_transaction(txn, i) for i, txn in enumerate(transactions, 1))
-    else:
-        text += "No transactions found."
-    text += f"\n\nTotal: {total_count}"
-    if is_truncated:
-        text += " (showing first 200, results truncated)"
+    # Always remember the index before sending so /tag, /delete, and
+    # /edit work off the same numbering the user sees in the table.
     remember_recent(chat_id, [t.id for t in transactions])
 
-    await update.message.reply_text(text)
+    html = render_transactions_table(transactions, _title=title)
+    try:
+        await send_rich_message(context.bot, chat_id, html)
+    except Exception as e:
+        logger.warning("rich_message_send_failed", error=str(e))
+        # Fall back to plain text.
+        text = f"{title}:\n\n"
+        if transactions:
+            text += "\n".join(
+                format_transaction(txn, i) for i, txn in enumerate(transactions, 1)
+            )
+        else:
+            text += "No transactions found."
+        text += f"\n\nTotal: {total_count}"
+        if is_truncated:
+            text += " (showing first 200, results truncated)"
+        await update.message.reply_text(text)
+        return
+
+    # On the rich-message path we can't include a footer text, so if
+    # there were truncated results we send a follow-up note.
+    if is_truncated:
+        await update.message.reply_text(
+            f"Total: {total_count} (showing first 200, results truncated)"
+        )
 
 
 async def search_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -246,6 +264,12 @@ async def search_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
     title = f'Search results for "{merchant}"'
     if tag:
         title += f' (tag: {tag})'
-    text = format_transactions(transactions, title)
     remember_recent(chat_id, [t.id for t in transactions])
-    await update.message.reply_text(text)
+
+    html = render_transactions_table(transactions, _title=title)
+    try:
+        await send_rich_message(context.bot, chat_id, html)
+    except Exception as e:
+        logger.warning("rich_message_send_failed", error=str(e))
+        # Fall back to plain text.
+        await update.message.reply_text(format_transactions(transactions, title))
