@@ -4,8 +4,7 @@ from tortoise.models import Model
 
 class User(Model):
     id = fields.IntField(pk=True, auto_now_add=True)
-    telegram_chat_id = fields.IntField(unique=True)
-    telegram_username = fields.CharField(max_length=255, null=True)
+    telegram_chat_id = fields.BigIntField(unique=True)
     name = fields.CharField(max_length=255)
     active = fields.BooleanField(default=True)
     created_at = fields.DatetimeField(db_default=fields.Now())

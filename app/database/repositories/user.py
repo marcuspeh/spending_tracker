@@ -11,16 +11,3 @@ class UserRepository:
     async def list_active(self) -> list[User]:
         return await User.filter(active=True, deleted_at__isnull=True).all()
 
-    async def insert(
-        self,
-        telegram_chat_id: int,
-        name: str,
-        telegram_username: str | None = None,
-    ) -> User:
-        user = await User.create(
-            telegram_chat_id=telegram_chat_id,
-            name=name,
-            telegram_username=telegram_username,
-            active=True,
-        )
-        return user

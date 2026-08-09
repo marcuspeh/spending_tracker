@@ -91,7 +91,6 @@ Fields:
 
 * id
 * telegram_chat_id (unique)
-* telegram_username
 * name
 * active
 * created_at
