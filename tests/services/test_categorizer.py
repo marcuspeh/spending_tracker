@@ -59,6 +59,29 @@ class _MockClient:
         return None
 
 
+class _MockCache:
+    """Async fake of MerchantCategoryCacheRepository.
+
+    Stores inserted entries in-memory so tests can verify the
+    categoricalizer called upsert() with the right (key, category).
+    """
+
+    def __init__(self, *, hit: str | None = None, raise_on_upsert: bool = False):
+        self._hit = hit
+        self._raise_on_upsert = raise_on_upsert
+        self.upserts: list[tuple[str, str]] = []
+        self.get_calls: list[str] = []
+
+    async def get(self, merchant_key: str) -> str | None:
+        self.get_calls.append(merchant_key)
+        return self._hit
+
+    async def upsert(self, merchant_key: str, category: str) -> None:
+        if self._raise_on_upsert:
+            raise RuntimeError("db down")
+        self.upserts.append((merchant_key, category))
+
+
 @pytest.fixture
 def settings():
     """Patch settings so LLM_BASE_URL / LLM_API_KEY / LLM_MODEL are set."""
@@ -73,27 +96,43 @@ def settings():
         yield fake
 
 
+@pytest.fixture
+def cache():
+    """Mock MerchantCategoryCacheRepository with no cache hits.
+
+    The categorizer imports the class lazily inside the function body,
+    so we patch the actual import path the categorizer uses.
+    """
+    from app.database.repositories import merchant_category_cache
+
+    fake = _MockCache()
+    with patch.object(
+        merchant_category_cache, "MerchantCategoryCacheRepository", return_value=fake
+    ):
+        yield fake
+
+
 class TestCategorize:
     @pytest.mark.asyncio
-    async def test_returns_category_when_in_set(self, settings):
+    async def test_returns_category_when_in_set(self, settings, cache):
         resp = _mock_response("food")
         with patch("app.services.categorizer.httpx.AsyncClient", return_value=_MockClient(resp)):
             assert await categorize("STARBUCKS") == "food"
 
     @pytest.mark.asyncio
-    async def test_lowercases_and_strips_punctuation(self, settings):
+    async def test_lowercases_and_strips_punctuation(self, settings, cache):
         resp = _mock_response("  Transport.\n")
         with patch("app.services.categorizer.httpx.AsyncClient", return_value=_MockClient(resp)):
             assert await categorize("GRAB") == "transport"
 
     @pytest.mark.asyncio
-    async def test_out_of_set_returns_none(self, settings):
+    async def test_out_of_set_returns_none(self, settings, cache):
         resp = _mock_response("alien-thing")
         with patch("app.services.categorizer.httpx.AsyncClient", return_value=_MockClient(resp)):
             assert await categorize("MYSTERY") is None
 
     @pytest.mark.asyncio
-    async def test_network_error_returns_none(self, settings):
+    async def test_network_error_returns_none(self, settings, cache):
         with patch(
             "app.services.categorizer.httpx.AsyncClient",
             return_value=_MockClient(error=httpx.ConnectError("boom")),
@@ -101,7 +140,7 @@ class TestCategorize:
             assert await categorize("STARBUCKS") is None
 
     @pytest.mark.asyncio
-    async def test_timeout_returns_none(self, settings):
+    async def test_timeout_returns_none(self, settings, cache):
         with patch(
             "app.services.categorizer.httpx.AsyncClient",
             return_value=_MockClient(error=httpx.TimeoutException("slow")),
@@ -109,7 +148,7 @@ class TestCategorize:
             assert await categorize("GRAB") is None
 
     @pytest.mark.asyncio
-    async def test_bad_json_returns_none(self, settings):
+    async def test_bad_json_returns_none(self, settings, cache):
         # Build a response whose body is valid JSON but missing keys.
         import json
 
@@ -119,13 +158,123 @@ class TestCategorize:
             assert await categorize("GRAB") is None
 
     @pytest.mark.asyncio
-    async def test_no_api_key_returns_none(self):
+    async def test_no_api_key_returns_none(self, cache):
         from app.config.settings import Settings
 
         fake = Settings(llm_api_key="")
         with patch("app.services.categorizer.get_settings", return_value=fake):
             # Should not raise and should not call the network.
             assert await categorize("STARBUCKS") is None
+
+
+class TestCache:
+    """Read-through / write-through behavior of the merchant cache."""
+
+    @pytest.mark.asyncio
+    async def test_cache_hit_skips_llm(self, settings):
+        from app.database.repositories import merchant_category_cache
+
+        # Cache returns "food" upfront — the LLM must NOT be called.
+        cache = _MockCache(hit="food")
+        with patch.object(
+            merchant_category_cache, "MerchantCategoryCacheRepository", return_value=cache
+        ):
+            mock_client = _MockClient(_mock_response("transport"))
+            with patch(
+                "app.services.categorizer.httpx.AsyncClient",
+                return_value=mock_client,
+            ):
+                result = await categorize("STARBUCKS")
+
+        assert result == "food"
+        assert mock_client.captured_payload is None, "LLM should not be called on cache hit"
+        assert cache.upserts == [], "no upsert on a hit"
+
+    @pytest.mark.asyncio
+    async def test_cache_miss_calls_llm_and_upserts(self, settings):
+        from app.database.repositories import merchant_category_cache
+
+        cache = _MockCache()
+        with patch.object(
+            merchant_category_cache, "MerchantCategoryCacheRepository", return_value=cache
+        ):
+            with patch(
+                "app.services.categorizer.httpx.AsyncClient",
+                return_value=_MockClient(_mock_response("shopping")),
+            ):
+                result = await categorize("CHOCFIN")
+
+        assert result == "shopping"
+        # Upsert called with the normalized merchant key + category.
+        assert cache.upserts == [("chocfin", "shopping")]
+
+    @pytest.mark.asyncio
+    async def test_cache_key_is_normalized(self, settings):
+        from app.database.repositories import merchant_category_cache
+
+        cache = _MockCache()
+        with patch.object(
+            merchant_category_cache, "MerchantCategoryCacheRepository", return_value=cache
+        ):
+            with patch(
+                "app.services.categorizer.httpx.AsyncClient",
+                return_value=_MockClient(_mock_response("food")),
+            ):
+                # Mixed-case + whitespace merchant. The cache key should
+                # be the lowercased trimmed form.
+                await categorize("  Starbucks  ")
+
+        assert cache.get_calls == ["starbucks"]
+        assert cache.upserts == [("starbucks", "food")]
+
+    @pytest.mark.asyncio
+    async def test_cache_upsert_skipped_on_out_of_set(self, settings):
+        from app.database.repositories import merchant_category_cache
+
+        cache = _MockCache()
+        with patch.object(
+            merchant_category_cache, "MerchantCategoryCacheRepository", return_value=cache
+        ):
+            with patch(
+                "app.services.categorizer.httpx.AsyncClient",
+                return_value=_MockClient(_mock_response("alien-thing")),
+            ):
+                result = await categorize("MYSTERY")
+
+        assert result is None
+        # No upsert when the LLM response is garbage.
+        assert cache.upserts == []
+
+    @pytest.mark.asyncio
+    async def test_cache_upsert_failure_does_not_break_caller(self, settings):
+        from app.database.repositories import merchant_category_cache
+
+        cache = _MockCache(raise_on_upsert=True)
+        with patch.object(
+            merchant_category_cache, "MerchantCategoryCacheRepository", return_value=cache
+        ):
+            with patch(
+                "app.services.categorizer.httpx.AsyncClient",
+                return_value=_MockClient(_mock_response("shopping")),
+            ):
+                # Must NOT raise — the LLM response is still returned
+                # to the caller; only the cache write is dropped.
+                result = await categorize("CHOCFIN")
+
+        assert result == "shopping"
+
+    @pytest.mark.asyncio
+    async def test_empty_merchant_returns_none_no_cache_call(self, settings):
+        from app.database.repositories import merchant_category_cache
+
+        cache = _MockCache()
+        with patch.object(
+            merchant_category_cache, "MerchantCategoryCacheRepository", return_value=cache
+        ):
+            result = await categorize("")
+
+        assert result is None
+        assert cache.get_calls == []
 
 
 class TestPayload:
@@ -142,9 +291,8 @@ class TestPayload:
     """
 
     @pytest.mark.asyncio
-    async def test_payload_shape(self, settings):
-        resp = _mock_response("food")
-        mock_client = _MockClient(resp)
+    async def test_payload_shape(self, settings, cache):
+        mock_client = _MockClient(_mock_response("food"))
         with patch("app.services.categorizer.httpx.AsyncClient", return_value=mock_client):
             await categorize("STARBUCKS")
 
@@ -167,10 +315,8 @@ class TestPayload:
         assert msgs[1]["content"] == "STARBUCKS"
 
     @pytest.mark.asyncio
-    async def test_payload_uses_settings(self, settings):
-        # Confirm the model name comes from settings each call.
-        resp = _mock_response("shopping")
-        mock_client = _MockClient(resp)
+    async def test_payload_uses_settings(self, settings, cache):
+        mock_client = _MockClient(_mock_response("shopping"))
         with patch("app.services.categorizer.httpx.AsyncClient", return_value=mock_client):
             await categorize("CHOCFIN")
 

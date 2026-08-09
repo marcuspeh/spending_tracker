@@ -78,14 +78,43 @@ def _normalize(raw: str) -> str | None:
     return None
 
 
+def _normalize_merchant_key(merchant: str) -> str:
+    """Normalize a merchant string for use as a cache key.
+
+    Mirrors the trim+lowercase scheme used for tags/categories so the
+    cache stays consistent across the codebase.
+    """
+    return merchant.strip().lower()
+
+
 async def categorize(merchant: str) -> str | None:
     """Return a category for ``merchant``, or None if classification fails.
 
     Network errors, timeouts, malformed JSON, and out-of-set replies all
     result in ``None``. The caller can safely persist ``None`` to the
     ``category`` column.
+
+    The merchant → category mapping is cached in MySQL
+    (``merchant_category_cache``). On a cache hit the LLM is not
+    called. The cache is populated only on a successful LLM response;
+    it is read-only from the bot's perspective — modify rows directly
+    in MySQL if you want to override a category.
     """
     settings = get_settings()
+    if not merchant:
+        return None
+
+    # Read-through cache. Skip the LLM entirely on a hit.
+    from app.database.repositories.merchant_category_cache import (
+        MerchantCategoryCacheRepository,
+    )
+
+    cache = MerchantCategoryCacheRepository()
+    cache_key = _normalize_merchant_key(merchant)
+    cached = await cache.get(cache_key)
+    if cached is not None:
+        return cached
+
     if not settings.llm_api_key:
         # LLM is not configured — skip silently rather than spam logs.
         return None
@@ -127,5 +156,16 @@ async def categorize(merchant: str) -> str | None:
     if category is None:
         logger.warning(
             "categorize_llm_out_of_set: merchant=%s reply=%r", merchant, content
+        )
+        return None
+
+    # Write-through: only successful + in-set responses get cached.
+    try:
+        await cache.upsert(cache_key, category)
+    except Exception as exc:
+        # Cache write failures must not break the caller — log and
+        # return the category anyway.
+        logger.warning(
+            "categorize_cache_upsert_failed: %s merchant=%s", exc, merchant
         )
     return category
