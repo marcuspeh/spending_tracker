@@ -32,19 +32,28 @@ def _mock_response(
 
 class _MockClient:
     """Async context manager that returns a stub client whose ``post``
-    returns the supplied response."""
+    returns the supplied response.
+
+    Exposes ``captured_payload`` so tests can inspect the request body
+    that the categorizer sent.
+    """
 
     def __init__(self, response: httpx.Response | None = None, error: Exception | None = None):
         self._response = response
         self._error = error
+        self.captured_payload: dict | None = None
 
     async def __aenter__(self):
         client = MagicMock()
         if self._error is not None:
             client.post = AsyncMock(side_effect=self._error)
         else:
-            client.post = AsyncMock(return_value=self._response)
+            client.post = AsyncMock(side_effect=self._capture)
         return client
+
+    async def _capture(self, url, headers=None, json=None, **kwargs):
+        self.captured_payload = json
+        return self._response
 
     async def __aexit__(self, *args):
         return None
@@ -117,3 +126,52 @@ class TestCategorize:
         with patch("app.services.categorizer.get_settings", return_value=fake):
             # Should not raise and should not call the network.
             assert await categorize("STARBUCKS") is None
+
+
+class TestPayload:
+    """Verify the request body shape sent to the LLM.
+
+    The categorizer must:
+      - Cap max_tokens at 16 (so a single-word answer isn't truncated when
+        the model needs to emit a few more tokens for the prefix).
+      - Disable thinking via ``thinking: {type: "disabled"}`` — this is
+        the Anthropic-style schema; the legacy OpenRouter
+        ``reasoning: {enabled: false}`` is intentionally NOT used.
+      - Send temperature 0 for deterministic responses.
+      - Use the merchant string as the user message verbatim.
+    """
+
+    @pytest.mark.asyncio
+    async def test_payload_shape(self, settings):
+        resp = _mock_response("food")
+        mock_client = _MockClient(resp)
+        with patch("app.services.categorizer.httpx.AsyncClient", return_value=mock_client):
+            await categorize("STARBUCKS")
+
+        payload = mock_client.captured_payload
+        assert payload is not None, "categorizer did not call the LLM"
+        assert payload["model"] == "test-model"
+        assert payload["max_tokens"] == 16
+        assert payload["temperature"] == 0.0
+        assert payload["thinking"] == {"type": "disabled"}
+        # The legacy OpenRouter field must NOT be sent.
+        assert "reasoning" not in payload
+
+        # Messages: one system, one user.
+        msgs = payload["messages"]
+        assert len(msgs) == 2
+        assert msgs[0]["role"] == "system"
+        assert "food" in msgs[0]["content"]
+        assert msgs[1]["role"] == "user"
+        # User message is just the merchant, no Markdown wrapper.
+        assert msgs[1]["content"] == "STARBUCKS"
+
+    @pytest.mark.asyncio
+    async def test_payload_uses_settings(self, settings):
+        # Confirm the model name comes from settings each call.
+        resp = _mock_response("shopping")
+        mock_client = _MockClient(resp)
+        with patch("app.services.categorizer.httpx.AsyncClient", return_value=mock_client):
+            await categorize("CHOCFIN")
+
+        assert mock_client.captured_payload["model"] == "test-model"

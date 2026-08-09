@@ -56,17 +56,15 @@ def _build_prompt(merchant: str) -> list[dict[str, str]]:
             "role": "system",
             "content": (
                 "You categorize expense transactions. "
-                "Reply with exactly one category from this list, "
-                "lowercase, no punctuation, no explanations: "
-                f"{allowed}."
+                "Reply with exactly one token from this list, lowercase, "
+                "no punctuation, no explanations, no thinking, no prefix: "
+                f"{allowed}.\n"
+                "Output the single word only."
             ),
         },
         {
             "role": "user",
-            "content": (
-                f"Merchant: {merchant}\n"
-                "Category:"
-            ),
+            "content": merchant,
         },
     ]
 
@@ -96,8 +94,11 @@ async def categorize(merchant: str) -> str | None:
     payload = {
         "model": settings.llm_model,
         "messages": _build_prompt(merchant),
-        "max_tokens": 8,
+        "max_tokens": 16,
         "temperature": 0.0,
+        "thinking": {
+            "type": "disabled"
+        }
     }
     headers = {
         "Authorization": f"Bearer {settings.llm_api_key}",
