@@ -19,6 +19,7 @@ from typing import Final
 import httpx
 
 from app.config.settings import get_settings
+from app.services.merchant_normalizer import normalize_merchant
 
 logger = logging.getLogger(__name__)
 
@@ -81,10 +82,12 @@ def _normalize(raw: str) -> str | None:
 def _normalize_merchant_key(merchant: str) -> str:
     """Normalize a merchant string for use as a cache key.
 
-    Mirrors the trim+lowercase scheme used for tags/categories so the
-    cache stays consistent across the codebase.
+    Thin wrapper over :func:`app.services.merchant_normalizer.normalize_merchant`
+    so the cache layer reads cleanly. Both names are kept for
+    backwards-compatibility; prefer importing from the merchant_normalizer
+    module in new code.
     """
-    return merchant.strip().lower()
+    return normalize_merchant(merchant)
 
 
 async def categorize(merchant: str) -> str | None:

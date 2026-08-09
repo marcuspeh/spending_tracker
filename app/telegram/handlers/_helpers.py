@@ -2,6 +2,7 @@ from typing import Any
 
 from telegram import Bot
 
+from app.services.merchant_normalizer import normalize_merchant
 from app.utils.timezone import utc_to_sgt
 
 # In-memory state for two-step delete confirmation, keyed by chat_id.
@@ -124,7 +125,7 @@ def render_latest_table(transactions: list, _title: str = "Latest transactions")
             + cell(time_sgt.strftime("%H:%M"))
             + cell(amount)
             + cell(_truncate(txn.payment_method.value, 22))
-            + cell(_truncate(txn.merchant or "", 32))
+            + cell(_truncate(normalize_merchant(txn.merchant), 32))
             + cell(_truncate(getattr(txn, "category", None) or "", 14))
         )
         if has_any_tag:
