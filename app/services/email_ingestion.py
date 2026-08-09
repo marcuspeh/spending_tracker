@@ -4,6 +4,7 @@ from app.database.enums import ImportStatus, PaymentMethod
 from app.database.repositories.imported_email import ImportedEmailRepository
 from app.database.repositories.transaction import TransactionRepository
 from app.database.repositories.user_email import UserEmailRepository
+from app.services.categorizer import categorize
 from app.services.notification import NotificationService
 from app.services.parsers.base import ParserError
 from app.services.parsers.registry import ParserRegistry
@@ -89,6 +90,20 @@ class EmailIngestionService:
 
         payment_method = PaymentMethod(parsed.payment_method)
         transaction_time_utc = sgt_to_utc(parsed.transaction_time)
+
+        # Auto-categorize. Read-through merchant cache makes this
+        # near-free on subsequent emails with the same merchant — only
+        # the first email of each unique merchant hits the LLM. Categorize
+        # is defensive: network errors, timeouts, bad JSON, and out-of-set
+        # replies all return None, so a transient LLM failure never blocks
+        # ingestion.
+        category: str | None = None
+        if parsed.merchant:
+            try:
+                category = await categorize(parsed.merchant)
+            except Exception:
+                category = None
+
         txn = await self.transaction_repo.insert(
             user_id=user_email.user_id,
             amount=float(parsed.amount),
@@ -96,6 +111,7 @@ class EmailIngestionService:
             payment_method=payment_method,
             transaction_time=transaction_time_utc,
             description=parsed.description,
+            category=category,
         )
 
         if self.notification_service is not None:
