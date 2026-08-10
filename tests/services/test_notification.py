@@ -24,12 +24,22 @@ def _fake_user(user_id: int = 42, chat_id: int = 9999) -> User:
     return user
 
 
-def _fake_txn(amount: str = "3.98", merchant: str = "STARBUCKS") -> MagicMock:
-    txn = MagicMock(spec=Transaction)
+def _fake_txn(
+    amount: str = "3.98",
+    merchant: str = "STARBUCKS",
+    category: str | None = None,
+) -> MagicMock:
+    # Use a plain MagicMock (not spec=Transaction) because spec=spec
+    # binds every name on the model — including ``category`` — to a
+    # Mock attribute, which prevents us from setting it to None and
+    # produces ``TypeError: argument of type 'builtin_function_or_method'
+    # is not iterable`` in the formatter.
+    txn = MagicMock()
     txn.amount = Decimal(amount)
     txn.merchant = merchant
     txn.payment_method = PaymentMethod.DBS_CC
     txn.transaction_time = datetime(2026, 7, 16, 12, 39)
+    txn.category = category
     return txn
 
 
@@ -46,6 +56,16 @@ class TestFormatTransactionNotification:
         assert "received" in text
         assert "S$25.50" in text
         assert "GRAB" in text
+
+    def test_includes_category_when_present(self):
+        text = format_transaction_notification(_fake_txn(category="food"))
+        assert "Category: food" in text
+
+    def test_shows_dash_when_category_null(self):
+        # When the LLM is disabled or fails, the helper prints '-' so the
+        # user can see the category field exists but is unfilled.
+        text = format_transaction_notification(_fake_txn(category=None))
+        assert "Category: -" in text
 
 
 class TestNotifyTransaction:
