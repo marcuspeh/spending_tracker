@@ -59,13 +59,22 @@ class TestFormatTransactionNotification:
 
     def test_includes_category_when_present(self):
         text = format_transaction_notification(_fake_txn(category="food"))
-        assert "Category: food" in text
+        # First letter is capitalized for display; the DB stores it lowercased.
+        assert "Category: Food" in text
 
     def test_shows_dash_when_category_null(self):
         # When the LLM is disabled or fails, the helper prints '-' so the
         # user can see the category field exists but is unfilled.
         text = format_transaction_notification(_fake_txn(category=None))
         assert "Category: -" in text
+
+    def test_capitalizes_only_first_letter(self):
+        # Capitalize keeps the rest lowercase. "shopping" -> "Shopping",
+        # but "FOOD" -> "Food" (not "FOOD").
+        text = format_transaction_notification(_fake_txn(category="shopping"))
+        assert "Category: Shopping" in text
+        text = format_transaction_notification(_fake_txn(category="FOOD"))
+        assert "Category: Food" in text
 
 
 class TestNotifyTransaction:

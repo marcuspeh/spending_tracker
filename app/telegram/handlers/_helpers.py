@@ -56,8 +56,22 @@ def format_transaction(txn: Any, index: int) -> str:
     sign = "-" if txn.amount < 0 else "+"
     return (
         f"{index}. {sign}{format_amount(txn.amount)} at {txn.merchant}\n"
-        f"   {time_sgt.strftime('%d %b %Y %H:%M')} | {txn.payment_method.value}"
+        f"   {time_sgt.strftime('%d %b %Y %H:%M')} | {txn.payment_method.value}\n"
+        f"   Category: {describe_category_for_display(txn)}"
     )
+
+
+def describe_category_for_display(txn: Any) -> str:
+    """Return the category string for user-facing display.
+
+    Capitalizes the first letter so users see "Food" instead of the
+    DB-stored lowercased form. Returns ``"-"`` when the category is
+    missing (LLM disabled or failed).
+    """
+    category = getattr(txn, "category", None) or "-"
+    if category == "-":
+        return "-"
+    return category.capitalize()
 
 
 def format_transactions(transactions: list, title: str = "Transactions") -> str:
@@ -122,6 +136,12 @@ def render_transactions_table(transactions: list, _title: str = "Transactions") 
         time_sgt = utc_to_sgt(txn.transaction_time)
         sign = "-" if txn.amount < 0 else "+"
         amount = f"{sign}{format_amount(txn.amount)}"
+        # Capitalize the first letter for display; the DB stores the
+        # category lowercased. Empty string when unset so the cell is
+        # blank instead of "-".
+        category_display = describe_category_for_display(txn)
+        if category_display == "-":
+            category_display = ""
         row = (
             "<tr>"
             + cell(str(offset))
@@ -130,7 +150,7 @@ def render_transactions_table(transactions: list, _title: str = "Transactions") 
             + cell(amount)
             + cell(_truncate(txn.payment_method.value, 22))
             + cell(_truncate(normalize_merchant(txn.merchant), 32))
-            + cell(_truncate(getattr(txn, "category", None) or "", 14))
+            + cell(_truncate(category_display, 14))
         )
         if has_any_tag:
             row += cell(_truncate(getattr(txn, "tag", None) or "", 16))
