@@ -24,7 +24,7 @@ def format_transaction_notification(txn: Transaction) -> str:
         # "food" in the alert. The DB stores it lowercased.
         category = category.capitalize()
     return (
-        f"�� New transaction recorded\n"
+        f"💳 New transaction recorded\n"
         f"You {verb} {_format_amount(txn.amount)} at {txn.merchant}\n"
         f"Time: {time_sgt.strftime('%d %b %Y %H:%M')}\n"
         f"Method: {txn.payment_method.value}\n"
