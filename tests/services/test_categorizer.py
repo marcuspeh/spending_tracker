@@ -1,16 +1,11 @@
-"""Tests for the LLM-backed tagger.
-
-The public function is :func:`app.services.categorizer.tag_for`; the
-old name :func:`categorize` is kept as an alias and exercised through
-this file to avoid keeping two parallel test suites alive.
-"""
+"""Tests for the LLM-backed tagger."""
 
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import httpx
 import pytest
 
-from app.services.categorizer import categorize, tag_for
+from app.services.categorizer import tag_for
 
 
 def _mock_response(
@@ -325,15 +320,3 @@ class TestPayload:
             await tag_for("CHOCFIN")
 
         assert mock_client.captured_payload["model"] == "test-model"
-
-
-# ---------------------------------------------------------------------------
-# Backwards-compatibility: the public API moved from ``categorize`` to
-# ``tag_for`` but the old name is kept as an alias. The tests below
-# confirm the alias still points at the same implementation.
-# ---------------------------------------------------------------------------
-
-
-class TestCategorizeAlias:
-    def test_categorize_is_tag_for(self):
-        assert categorize is tag_for

@@ -90,22 +90,26 @@ async def add_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
     )
 
 
-async def edit_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """Handle /edit <index> <field> <value> command.
+async def _apply_field_edit(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE,
+    field: str,
+    value: str,
+) -> None:
+    """Resolve the index, fetch the user, and apply ``field=value``.
 
-    ``index`` is the 1-based row number from the most recent /latest,
-    /search, or /range result. If no list is cached (or the index is out
-    of range) the user is told to run a list command first.
+    Shared by every per-field edit shortcut (:func:`amount_handler`,
+    :func:`merchant_handler`, :func:`description_handler`,
+    :func:`time_handler`, :func:`tag_handler`). The ``field`` is the
+    database column name (``amount``, ``merchant``, ``description``,
+    ``transaction_time``, ``tag``); ``value`` is the user-supplied
+    string already validated by the caller.
     """
-    if not await auth_handler(update, context):
-        return
-
     args = context.args
-    if len(args) < 3:
+    if len(args) < 2:
         await update.message.reply_text(
-            "Usage: /edit <index> <field> <value>\n"
-            "Fields: amount, merchant, description, transaction_time\n"
-            "Example: /edit 2 merchant \"Bus/MRT\"\n"
+            f"Usage: /{field} <index> <value>\n"
+            f"Example: /{field} 2 {('12.50' if field == 'amount' else 'Bus/MRT')}\n"
             "Run /latest (or /search, /range) first to see the index."
         )
         return
@@ -120,9 +124,6 @@ async def edit_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
         )
         return
 
-    field = args[1]
-    value = " ".join(args[2:])
-
     user_repo = UserRepository()
     user = await user_repo.get_by_chat_id(chat_id)
     if not user:
@@ -130,7 +131,6 @@ async def edit_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
         return
 
     expense_service = ExpenseService()
-    # Signature: edit_transaction(transaction_id, user_id, field, value) — txn first.
     try:
         txn = await expense_service.edit_transaction(txn_id, user.id, field, value)
     except InvalidEditValue as exc:
@@ -139,11 +139,165 @@ async def edit_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
 
     if txn:
         await update.message.reply_text(
-            "Transaction updated!"
+            f"Updated transaction {txn.id}: {field}={value}"
         )
         clear_recent(chat_id)
     else:
         await update.message.reply_text("Transaction not found.")
+
+
+async def amount_handler(
+    update: Update, context: ContextTypes.DEFAULT_TYPE
+) -> None:
+    """Handle /amount <index> <value> command."""
+    if not await auth_handler(update, context):
+        return
+    args = context.args
+    if len(args) < 2:
+        await update.message.reply_text(
+            "Usage: /amount <index> <value>\n"
+            "Example: /amount 2 12.50\n"
+            "Use a negative value for refunds, e.g. /amount 2 -5.00."
+        )
+        return
+    await _apply_field_edit(update, context, "amount", args[1])
+
+
+async def merchant_handler(
+    update: Update, context: ContextTypes.DEFAULT_TYPE
+) -> None:
+    """Handle /merchant <index> <value...> command."""
+    if not await auth_handler(update, context):
+        return
+    args = context.args
+    if len(args) < 2:
+        await update.message.reply_text(
+            "Usage: /merchant <index> <merchant>\n"
+            "Example: /merchant 2 Bus/MRT"
+        )
+        return
+    value = " ".join(args[1:])
+    await _apply_field_edit(update, context, "merchant", value)
+
+
+async def description_handler(
+    update: Update, context: ContextTypes.DEFAULT_TYPE
+) -> None:
+    """Handle /description <index> <value...> command."""
+    if not await auth_handler(update, context):
+        return
+    args = context.args
+    if len(args) < 2:
+        await update.message.reply_text(
+            "Usage: /description <index> <text>\n"
+            "Use /description <index> - to clear."
+        )
+        return
+    value = " ".join(args[1:])
+    await _apply_field_edit(update, context, "description", value)
+
+
+async def time_handler(
+    update: Update, context: ContextTypes.DEFAULT_TYPE
+) -> None:
+    """Handle /time <index> <value> command.
+
+    Accepts ``YYYY-MM-DD`` (midnight SGT) or ``YYYY-MM-DD HH:MM``
+    (24-hour SGT). Stored as UTC internally.
+    """
+    if not await auth_handler(update, context):
+        return
+    args = context.args
+    if len(args) < 2:
+        await update.message.reply_text(
+            "Usage: /time <index> <YYYY-MM-DD [HH:MM]>\n"
+            "Example: /time 2 2026-04-04 16:00\n"
+            "Default time when only a date is given: 00:00 SGT."
+        )
+        return
+    value = " ".join(args[1:])
+
+    # Parse here so we can accept both YYYY-MM-DD and YYYY-MM-DD HH:MM.
+    # The bare ``edit_transaction`` path only accepts YYYY-MM-DD via
+    # parse_date; we lift that restriction for /time.
+    chat_id = update.effective_chat.id
+    txn_id = resolve_recent(chat_id, args[0])
+    if txn_id is None:
+        await update.message.reply_text(
+            "Invalid index. Run /latest, /search, or /range first to see "
+            "the list, then use the number from that list."
+        )
+        return
+    user_repo = UserRepository()
+    user = await user_repo.get_by_chat_id(chat_id)
+    if not user:
+        await update.message.reply_text("User not found.")
+        return
+
+    parsed_time = _parse_time_value(value)
+    if parsed_time is None:
+        await update.message.reply_text(
+            f"Invalid time: {value!r}. Use YYYY-MM-DD or YYYY-MM-DD HH:MM."
+        )
+        return
+
+    expense_service = ExpenseService()
+    txn = await expense_service.edit_transaction(
+        txn_id, user.id, "transaction_time", parsed_time
+    )
+    if txn:
+        await update.message.reply_text(
+            f"Updated transaction {txn.id}: transaction_time={parsed_time.isoformat()}"
+        )
+        clear_recent(chat_id)
+    else:
+        await update.message.reply_text("Transaction not found.")
+
+
+def _parse_time_value(value: str) -> datetime | None:
+    """Parse a ``/time`` argument into a tz-aware SGT datetime.
+
+    Accepts ``YYYY-MM-DD`` (midnight SGT) or ``YYYY-MM-DD HH:MM``
+    (24-hour SGT). Returns ``None`` on any parse failure — the caller
+    surfaces a friendly error message.
+    """
+    from app.utils.timezone import SGT
+
+    for fmt in ("%Y-%m-%d %H:%M", "%Y-%m-%d"):
+        try:
+            dt = datetime.strptime(value, fmt)
+            return dt.replace(tzinfo=SGT)
+        except ValueError:
+            continue
+    return None
+
+
+async def tag_handler(
+    update: Update, context: ContextTypes.DEFAULT_TYPE
+) -> None:
+    """Handle /tag <index> <value...> command.
+
+    Sets the LLM-driven tag on the transaction. Use one of the
+    fixed tags (``food``, ``transport``, ``other``, …) or any
+    free-form label — both are accepted.
+    Pass a single ``-`` to clear the tag.
+    """
+    if not await auth_handler(update, context):
+        return
+    args = context.args
+    if len(args) < 2:
+        await update.message.reply_text(
+            "Usage: /tag <index> <value>\n"
+            "Common tags: food, transport, groceries, shopping, "
+            "subscriptions, health, entertainment, travel, transfers, "
+            "fees, refunds, cash, other.\n"
+            "Use /tag <index> - to clear."
+        )
+        return
+    value = " ".join(args[1:])
+    if value == "-":
+        value = ""  # repo's _normalize_tag turns "" into None.
+    await _apply_field_edit(update, context, "tag", value)
 
 
 def _describe(txn: Any) -> str:

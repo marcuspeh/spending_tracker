@@ -4,19 +4,11 @@ The model is sent a single piece of evidence (the merchant string) and
 asked to pick one of the tags in :data:`DEFAULT_TAGS`. The response is
 parsed defensively — any malformed output is treated as a failure and
 the call returns ``None`` so the caller can fall back to the default
-tag.
+tag (``other``).
 
 Network/timeout errors are also caught and logged; we never raise out
 of this module because the LLM path is a soft dependency and a
 catastrophic failure must not break transaction insertion.
-
-Public API:
-    - :func:`categorize`         — returns ``None`` on failure.
-    - :func:`categorize_or_default` — returns ``default`` on failure.
-
-Both are aliases of ``tag_for`` / ``tag_for_or_default``; the
-``categorize`` names are kept so the existing tests don't have to
-move, but every new caller should prefer the ``tag_for`` form.
 """
 
 from __future__ import annotations
@@ -37,8 +29,8 @@ logger = logging.getLogger(__name__)
 
 #: Default tags the LLM is allowed to return. Order is significant only
 #: for prompts — the model is asked to reply with the exact value.
-#: ``miscellaneous`` is the catch-all when the merchant doesn't fit any
-#: other bucket.
+#: ``other`` is the catch-all when the merchant doesn't fit any other
+#: bucket.
 DEFAULT_TAGS: Final[tuple[str, ...]] = (
     "food",
     "transport",
@@ -106,7 +98,7 @@ async def tag_for(merchant: str) -> str | None:
 
     Network errors, timeouts, malformed JSON, and out-of-set replies all
     result in ``None``. The caller can safely persist ``None`` and
-    fall back to ``miscellaneous`` elsewhere.
+    fall back to ``other`` elsewhere.
 
     The merchant → tag mapping is cached in MySQL
     (``merchant_category_cache`` — kept under the old name so existing
@@ -191,16 +183,16 @@ async def tag_for_or_default(
     error, timeout, bad JSON, out-of-set reply, missing API key, empty
     merchant) returns ``default`` instead of ``None``. The default value
     must be a member of :data:`DEFAULT_TAGS`; if it isn't, the caller
-    gets ``None`` (i.e. ``default`` is **not** persisted unvalidated —
+    gets ``None` (i.e. ``default`` is **not** persisted unvalidated —
     it has to be a real tag).
 
     Pass-through paths still return ``None`` when the LLM is genuinely
     unable to produce a valid tag AND ``default`` is not a real tag.
     The cache is **not** populated with the default — only genuine LLM
     answers get cached, so users can later retry and overwrite the
-    default via /edit.
+    default via /tag.
 
-    If ``default`` is None, :data:`DEFAULT_FALLBACK_TAG` (``miscellaneous``)
+    If ``default`` is None, :data:`DEFAULT_FALLBACK_TAG` (``other``)
     is used.
     """
     if default is None:

@@ -45,8 +45,8 @@ class Settings(BaseSettings):
 
     # LLM (used to auto-tag transactions).
     # Settings are optional — if absent the tagger is a no-op and
-    # `tag` falls back to "miscellaneous" on insert. The merchant is the
-    # only input sent to the model; the prompt constrains the output to
+    # `tag` falls back to "other" on insert. The merchant is the only
+    # input sent to the model; the prompt constrains the output to
     # one of the fixed tags defined in
     # app.services.categorizer.DEFAULT_TAGS.
     llm_base_url: str = Field(default="https://api.openrouter.ai/api/v1")

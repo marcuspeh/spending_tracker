@@ -7,17 +7,21 @@ from app.config.settings import get_settings
 from app.telegram.auth import auth_middleware
 from app.telegram.handlers import (
     add_handler,
+    amount_handler,
     cancel_handler,
     confirm_handler,
     delete_handler,
-    edit_handler,
+    description_handler,
     help_handler,
     latest_handler,
+    merchant_handler,
     month_handler,
     ping_handler,
     range_handler,
     search_handler,
     start_handler,
+    tag_handler,
+    time_handler,
     today_handler,
     week_handler,
 )
@@ -52,7 +56,13 @@ class TelegramBot:
         self._app.add_handler(CommandHandler("range", range_handler))
         self._app.add_handler(CommandHandler("search", search_handler))
         self._app.add_handler(CommandHandler("add", add_handler))
-        self._app.add_handler(CommandHandler("edit", edit_handler))
+        # Per-field shortcuts. Each accepts <index> <value> only, so
+        # the command line is shorter and unambiguous.
+        self._app.add_handler(CommandHandler("amount", amount_handler))
+        self._app.add_handler(CommandHandler("merchant", merchant_handler))
+        self._app.add_handler(CommandHandler("description", description_handler))
+        self._app.add_handler(CommandHandler("time", time_handler))
+        self._app.add_handler(CommandHandler("tag", tag_handler))
         self._app.add_handler(CommandHandler("delete", delete_handler))
         self._app.add_handler(CommandHandler("confirm", confirm_handler))
         self._app.add_handler(CommandHandler("cancel", cancel_handler))

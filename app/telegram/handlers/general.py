@@ -34,14 +34,20 @@ Viewing transactions:
 
 Managing transactions:
 /add <amount> <merchant> [description] [date] - Add manual transaction
-/edit <index> <field> <value> - Edit a transaction (amount, merchant, description, transaction_time, tag)
 /delete <index> - Start delete confirmation
 /confirm - Confirm a pending delete (omit the index)
 /confirm <index> - Confirm a specific pending delete
 /cancel - Cancel all pending deletes
 /cancel <index> - Cancel a specific pending delete
 
-Every transaction is auto-tagged (food, transport, groceries, shopping, subscriptions, health, entertainment, travel, transfers, fees, refunds, cash, miscellaneous) on insert. If the LLM is misconfigured or fails, the tag falls back to ``miscellaneous``. Use /edit <index> tag <value> to set a different value manually.
+Per-field editing (each accepts <index> <value>):
+/amount <idx> <value> - Edit the amount (negative for refunds)
+/merchant <idx> <value> - Edit the merchant
+/description <idx> <value> - Edit the description
+/time <idx> <YYYY-MM-DD [HH:MM]> - Edit the transaction time
+/tag <idx> <value> - Edit the tag
+
+Every transaction is auto-tagged (food, transport, groceries, shopping, subscriptions, health, entertainment, travel, transfers, fees, refunds, cash, other) on insert. If the LLM is misconfigured or fails, the tag falls back to ``other``. Use /tag <idx> <value> to set a different value manually.
 
 Typical flow:
 
@@ -52,7 +58,7 @@ Typical flow:
 
   /latest
     -> [rich table]
-  /edit 1 tag food
+  /tag 1 food
     -> "Updated transaction 1: tag=food"
 
 Other:

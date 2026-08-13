@@ -95,15 +95,15 @@ class EmailIngestionService:
         # subsequent emails with the same merchant — only the first
         # email of each unique merchant hits the LLM. When the LLM
         # fails or returns a value outside the allowed set, the row is
-        # saved with tag="miscellaneous" so every transaction still
-        # carries a usable label.
+        # saved with tag="other" so every transaction still carries
+        # a usable label.
         tag: str | None = None
         if parsed.merchant:
             try:
                 tag = await tag_for_or_default(parsed.merchant)
             except Exception:
                 # Cache lookup / upsert failures must not block ingestion.
-                tag = "miscellaneous"
+                tag = "other"
 
         txn = await self.transaction_repo.insert(
             user_id=user_email.user_id,

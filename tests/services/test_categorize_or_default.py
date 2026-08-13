@@ -67,7 +67,7 @@ async def test_falls_back_to_default_when_llm_returns_none(settings, cache):
     ):
         result = await tag_for_or_default("MERCHANT")
     assert result == DEFAULT_FALLBACK_TAG
-    assert result == "miscellaneous"
+    assert result == "other"
 
 
 @pytest.mark.asyncio
@@ -110,9 +110,9 @@ async def test_rejects_invalid_default(settings, cache):
 
 
 def test_default_is_in_default_tags():
-    """The shipped default ``"miscellaneous"`` must be a valid tag."""
-    assert "miscellaneous" in DEFAULT_TAGS
+    """The shipped default ``"other"`` must be a valid tag."""
+    assert "other" in DEFAULT_TAGS
 
 
-def test_default_fallback_constant_is_miscellaneous():
-    assert DEFAULT_FALLBACK_TAG == "miscellaneous"
+def test_default_fallback_constant_is_other():
+    assert DEFAULT_FALLBACK_TAG == "other"

@@ -99,15 +99,3 @@ class TestDescribeTagForDisplay:
         from app.telegram.handlers._helpers import describe_tag_for_display
 
         assert describe_tag_for_display(_fake_txn(tag="")) == "-"
-
-
-class TestBackwardsCompatibility:
-    """The old ``describe_category_for_display`` alias must still work."""
-
-    def test_alias_still_works(self):
-        from app.telegram.handlers._helpers import (
-            describe_category_for_display,
-            describe_tag_for_display,
-        )
-
-        assert describe_category_for_display is describe_tag_for_display

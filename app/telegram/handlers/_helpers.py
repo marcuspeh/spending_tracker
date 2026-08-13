@@ -161,12 +161,6 @@ def render_transactions_table(transactions: list, _title: str = "Transactions") 
     )
 
 
-# Backwards-compatible alias — the function used to be named
-# ``render_latest_table`` but is now generic across all list-returning
-# commands. Older call sites keep working.
-render_latest_table = render_transactions_table
-
-
 async def send_rich_message(bot: Bot, chat_id: int, html: str) -> Any:
     """Send a Bot API 10.1 Rich Message via ``sendRichMessage``.
 
