@@ -74,15 +74,10 @@ class TestColumns:
         html = render_transactions_table([_fake_txn()])
         assert ">CATEGORY<" in html
 
-    def test_omits_tag_column_when_no_tags(self):
+    def test_no_tag_column(self):
+        # /tag has been removed; the table should never include a TAG column.
         html = render_transactions_table([_fake_txn()])
         assert ">TAG<" not in html
-
-    def test_shows_tag_column_when_any_tag_present(self):
-        html = render_transactions_table(
-            [_fake_txn(tag="coffee_daily"), _fake_txn()]
-        )
-        assert ">TAG<" in html
 
     def test_renders_index_1(self):
         html = render_transactions_table([_fake_txn()])

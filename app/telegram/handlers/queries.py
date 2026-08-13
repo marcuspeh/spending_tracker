@@ -19,37 +19,22 @@ from app.utils.timezone import parse_date
 logger = structlog.get_logger()
 
 
-def _parse_count_and_tag(
+def _parse_count(
     args: list[str] | None,
     default_count: int = 10,
     max_count: int = 50,
-) -> tuple[int, str | None]:
-    """Parse ``[count] [tag]`` from a command's args.
-
-    Returns: ``(count, tag)``. The first arg is treated as a count if
-    it parses as an integer; otherwise the first arg is the tag and the
-    count falls back to ``default_count``. Any leftover args are joined
-    with spaces as a single tag (so multi-word tags work, e.g. ``coffee
-    daily``).
-    """
+) -> int:
+    """Parse ``[count]`` from a command's args. Capped at ``max_count``."""
     if not args:
-        return default_count, None
-
-    count = default_count
-    rest = args
+        return default_count
     try:
-        count = min(int(args[0]), max_count)
-        rest = args[1:]
+        return min(int(args[0]), max_count)
     except ValueError:
-        # First arg isn't a number — treat everything as a tag.
-        pass
-
-    tag = " ".join(rest).strip() or None
-    return count, tag
+        return default_count
 
 
 async def latest_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """Handle /latest [count] [tag] command.
+    """Handle /latest [count] command.
 
     Sends a Bot API 10.1 Rich Message with the transactions rendered as a
     native ``<table>``. Falls back to a plain text message if the API
@@ -59,7 +44,7 @@ async def latest_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
         return
 
     chat_id = update.effective_chat.id
-    count, tag = _parse_count_and_tag(context.args, default_count=10, max_count=50)
+    count = _parse_count(context.args, default_count=10, max_count=50)
 
     user_repo = UserRepository()
     user = await user_repo.get_by_chat_id(chat_id)
@@ -68,11 +53,11 @@ async def latest_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
         return
 
     expense_service = ExpenseService()
-    transactions = await expense_service.get_latest_transactions(user.id, count, tag=tag)
+    transactions = await expense_service.get_latest_transactions(user.id, count)
 
     remember_recent(chat_id, [t.id for t in transactions])
 
-    title = "Latest transactions" if tag is None else f'Latest transactions (tag: {tag})'
+    title = "Latest transactions"
     html = render_transactions_table(transactions, _title=title)
     try:
         await send_rich_message(context.bot, chat_id, html)
@@ -86,12 +71,11 @@ async def latest_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
 
 
 async def today_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """Handle /today [tag] command."""
+    """Handle /today command."""
     if not await auth_handler(update, context):
         return
 
     chat_id = update.effective_chat.id
-    tag = context.args[0] if context.args else None
 
     user_repo = UserRepository()
     user = await user_repo.get_by_chat_id(chat_id)
@@ -100,22 +84,20 @@ async def today_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
         return
 
     expense_service = ExpenseService()
-    total = await expense_service.get_today_spending(user.id, tag=tag)
+    total = await expense_service.get_today_spending(user.id)
 
-    prefix = "Today's spending" if tag is None else f"Today's spending (tag: {tag})"
-    text = f"{prefix}: {format_amount(total)}"
+    text = f"Today's spending: {format_amount(total)}"
     if total < 0:
         text += " (net credit)"
     await update.message.reply_text(text)
 
 
 async def week_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """Handle /week [tag] command."""
+    """Handle /week command."""
     if not await auth_handler(update, context):
         return
 
     chat_id = update.effective_chat.id
-    tag = context.args[0] if context.args else None
 
     user_repo = UserRepository()
     user = await user_repo.get_by_chat_id(chat_id)
@@ -124,22 +106,20 @@ async def week_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
         return
 
     expense_service = ExpenseService()
-    total = await expense_service.get_week_spending(user.id, tag=tag)
+    total = await expense_service.get_week_spending(user.id)
 
-    prefix = "This week's spending" if tag is None else f"This week's spending (tag: {tag})"
-    text = f"{prefix}: {format_amount(total)}"
+    text = f"This week's spending: {format_amount(total)}"
     if total < 0:
         text += " (net credit)"
     await update.message.reply_text(text)
 
 
 async def month_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """Handle /thismonth [tag] command."""
+    """Handle /thismonth command."""
     if not await auth_handler(update, context):
         return
 
     chat_id = update.effective_chat.id
-    tag = context.args[0] if context.args else None
 
     user_repo = UserRepository()
     user = await user_repo.get_by_chat_id(chat_id)
@@ -148,31 +128,29 @@ async def month_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
         return
 
     expense_service = ExpenseService()
-    total = await expense_service.get_month_spending(user.id, tag=tag)
+    total = await expense_service.get_month_spending(user.id)
 
-    prefix = "This month's spending" if tag is None else f"This month's spending (tag: {tag})"
-    text = f"{prefix}: {format_amount(total)}"
+    text = f"This month's spending: {format_amount(total)}"
     if total < 0:
         text += " (net credit)"
     await update.message.reply_text(text)
 
 
 async def range_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """Handle /range <start> <end> [tag] command."""
+    """Handle /range <start> <end> command."""
     if not await auth_handler(update, context):
         return
 
     args = context.args
     if len(args) < 2:
         await update.message.reply_text(
-            "Usage: /range <start> <end> [tag]\n"
-            "Example: /range 2024-01-01 2024-01-31 coffee"
+            "Usage: /range <start> <end>\n"
+            "Example: /range 2024-01-01 2024-01-31"
         )
         return
 
     chat_id = update.effective_chat.id
     start_str, end_str = args[0], args[1]
-    tag = " ".join(args[2:]).strip() or None
 
     try:
         start_date = parse_date(start_str)
@@ -189,16 +167,12 @@ async def range_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
 
     expense_service = ExpenseService()
     transactions, total_count, is_truncated = await expense_service.get_range_transactions(
-        user.id, start_date, end_date, tag=tag
+        user.id, start_date, end_date
     )
 
-    title = (
-        f"Transactions from {start_str} to {end_str}"
-        if tag is None
-        else f'Transactions from {start_str} to {end_str} (tag: {tag})'
-    )
-    # Always remember the index before sending so /tag, /delete, and
-    # /edit work off the same numbering the user sees in the table.
+    title = f"Transactions from {start_str} to {end_str}"
+    # Always remember the index before sending so /delete and /edit
+    # work off the same numbering the user sees in the table.
     remember_recent(chat_id, [t.id for t in transactions])
 
     html = render_transactions_table(transactions, _title=title)
@@ -229,28 +203,17 @@ async def range_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
 
 
 async def search_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """Handle /search <merchant> [tag] command."""
+    """Handle /search <merchant> command."""
     if not await auth_handler(update, context):
         return
 
     args = context.args
     if not args:
-        await update.message.reply_text("Usage: /search <merchant> [tag]")
+        await update.message.reply_text("Usage: /search <merchant>")
         return
 
     chat_id = update.effective_chat.id
     merchant = " ".join(args)
-    tag = None
-    # If last arg(s) parse as a tag (after the merchant phrase), treat
-    # last whitespace-separated word as the tag. Simple heuristic — users
-    # who want multi-word tags via /search will need to use the bot's
-    # /tag command instead.
-    parts = args
-    if len(parts) >= 2:
-        candidate = parts[-1]
-        if candidate.replace("_", "").isalnum():
-            tag = candidate
-            merchant = " ".join(parts[:-1])
 
     user_repo = UserRepository()
     user = await user_repo.get_by_chat_id(chat_id)
@@ -259,11 +222,9 @@ async def search_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
         return
 
     expense_service = ExpenseService()
-    transactions = await expense_service.search_transactions(user.id, merchant, tag=tag)
+    transactions = await expense_service.search_transactions(user.id, merchant)
 
     title = f'Search results for "{merchant}"'
-    if tag:
-        title += f' (tag: {tag})'
     remember_recent(chat_id, [t.id for t in transactions])
 
     html = render_transactions_table(transactions, _title=title)

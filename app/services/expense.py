@@ -32,7 +32,6 @@ class ExpenseService:
         payment_method: PaymentMethod,
         transaction_time: datetime,
         description: str | None = None,
-        tag: str | None = None,
     ) -> Transaction:
         """Add a new transaction for a user.
 
@@ -61,7 +60,6 @@ class ExpenseService:
             payment_method=payment_method,
             transaction_time=transaction_time_utc,
             description=description,
-            tag=tag,
             category=category,
         )
 
@@ -82,7 +80,7 @@ class ExpenseService:
         value: Any,
     ) -> Transaction | None:
         """Edit a transaction field if owned by user."""
-        allowed_fields = {"amount", "merchant", "description", "transaction_time", "tag", "category"}
+        allowed_fields = {"amount", "merchant", "description", "transaction_time", "category"}
         if field not in allowed_fields:
             raise ValueError(f"Field must be one of: {allowed_fields}")
 
@@ -111,23 +109,10 @@ class ExpenseService:
         return transaction
 
     async def get_latest_transactions(
-        self, user_id: int, count: int = 10, tag: str | None = None
+        self, user_id: int, count: int = 10
     ) -> list[Transaction]:
-        """Get latest transactions for a user, optionally filtered by tag."""
-        return await self.transaction_repo.list_latest_for_user(user_id, count, tag=tag)
-
-    async def set_tag(
-        self,
-        transaction_id: int,
-        user_id: int,
-        tag: str | None,
-    ) -> Transaction | None:
-        """Set or clear the tag on a transaction.
-
-        Returns the updated transaction, or ``None`` if the transaction
-        doesn't exist (or isn't owned by the user).
-        """
-        return await self.edit_transaction(transaction_id, user_id, "tag", tag)
+        """Get latest transactions for a user."""
+        return await self.transaction_repo.list_latest_for_user(user_id, count)
 
     async def recategorize(self, transaction_id: int, user_id: int) -> Transaction | None:
         """Re-run the LLM categorizer on a transaction and update the
@@ -154,37 +139,36 @@ class ExpenseService:
             )
         return transaction
 
-    async def get_today_spending(self, user_id: int, tag: str | None = None) -> float:
+    async def get_today_spending(self, user_id: int) -> float:
         """Get today's total spending (signed, including refunds)."""
         start, end = get_today_window()
         # Window is SGT; the DB stores UTC. Convert before querying.
         return await self.transaction_repo.sum_amount(
-            user_id, sgt_to_utc(start), sgt_to_utc(end), tag=tag
+            user_id, sgt_to_utc(start), sgt_to_utc(end)
         )
 
-    async def get_week_spending(self, user_id: int, tag: str | None = None) -> float:
+    async def get_week_spending(self, user_id: int) -> float:
         """Get this week's total spending (signed, including refunds)."""
         start, end = get_week_window()
         return await self.transaction_repo.sum_amount(
-            user_id, sgt_to_utc(start), sgt_to_utc(end), tag=tag
+            user_id, sgt_to_utc(start), sgt_to_utc(end)
         )
 
-    async def get_month_spending(self, user_id: int, tag: str | None = None) -> float:
+    async def get_month_spending(self, user_id: int) -> float:
         """Get this month's total spending (signed, including refunds)."""
         start, end = get_month_window()
         return await self.transaction_repo.sum_amount(
-            user_id, sgt_to_utc(start), sgt_to_utc(end), tag=tag
+            user_id, sgt_to_utc(start), sgt_to_utc(end)
         )
 
     async def search_transactions(
         self,
         user_id: int,
         merchant_substring: str,
-        tag: str | None = None,
     ) -> list[Transaction]:
         """Search transactions by merchant name (case-insensitive)."""
         return await self.transaction_repo.search_transactions(
-            user_id, merchant_substring, tag=tag
+            user_id, merchant_substring
         )
 
     async def get_range_transactions(
@@ -192,7 +176,6 @@ class ExpenseService:
         user_id: int,
         start_date: datetime | str,
         end_date: datetime | str,
-        tag: str | None = None,
     ) -> tuple[list[Transaction], int, bool]:
         """Get transactions in a date range.
 
@@ -208,6 +191,6 @@ class ExpenseService:
         start_sgt, end_sgt = get_range_window(start_date, end_date)
         # Convert SGT window to UTC — the DB stores transaction_time as UTC.
         rows, total_count = await self.transaction_repo.list_in_range_for_user(
-            user_id, sgt_to_utc(start_sgt), sgt_to_utc(end_sgt), tag=tag
+            user_id, sgt_to_utc(start_sgt), sgt_to_utc(end_sgt)
         )
         return rows, total_count, total_count > 200

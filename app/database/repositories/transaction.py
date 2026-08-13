@@ -8,15 +8,6 @@ from app.database.enums import PaymentMethod
 from app.database.models.transaction import Transaction
 
 
-def _normalize_tag(tag: str | None) -> str | None:
-    """Lowercase + strip a tag for storage / comparison. ``None`` and ''
-    both return ``None`` so the optional filter becomes a no-op."""
-    if tag is None:
-        return None
-    cleaned = tag.strip().lower()
-    return cleaned or None
-
-
 def _normalize_category(category: str | None) -> str | None:
     """Lowercase + strip a category. ``None`` and '' both return ``None``."""
     if category is None:
@@ -34,7 +25,6 @@ class TransactionRepository:
         payment_method: PaymentMethod,
         transaction_time: datetime,
         description: str | None = None,
-        tag: str | None = None,
         category: str | None = None,
     ) -> Transaction:
         if amount is None:
@@ -48,7 +38,6 @@ class TransactionRepository:
             payment_method=payment_method,
             transaction_time=transaction_time,
             description=description,
-            tag=_normalize_tag(tag),
             category=_normalize_category(category),
         )
         return transaction
@@ -58,24 +47,19 @@ class TransactionRepository:
             id=transaction_id, user_id=user_id, deleted_at__isnull=True
         ).first()
 
-    def _base_filter(self, user_id: int, tag: str | None = None) -> QuerySet:
-        """Build the standard ``user_id + not-deleted`` filter plus an
-        optional exact-match tag filter (case-insensitive)."""
+    def _base_filter(self, user_id: int) -> QuerySet:
+        """Build the standard ``user_id + not-deleted`` filter."""
 
-        qs = Transaction.filter(user_id=user_id, deleted_at__isnull=True)
-        normalized = _normalize_tag(tag)
-        if normalized is not None:
-            qs = qs.filter(tag=normalized)
-        return qs
+        return Transaction.filter(user_id=user_id, deleted_at__isnull=True)
 
     async def list_latest_for_user(
-        self, user_id: int, count: int = 10, tag: str | None = None
+        self, user_id: int, count: int = 10
     ) -> list[Transaction]:
         # Order by transaction_time descending; tie-break by id so two
         # transactions with the same timestamp come back in a stable
         # order (newest insertion first).
         return (
-            await self._base_filter(user_id, tag)
+            await self._base_filter(user_id)
             .order_by("-transaction_time", "-id")
             .limit(count)
         )
@@ -86,9 +70,8 @@ class TransactionRepository:
         start_date: datetime,
         end_date: datetime,
         limit: int = 201,
-        tag: str | None = None,
     ) -> tuple[list[Transaction], int]:
-        window = self._base_filter(user_id, tag).filter(
+        window = self._base_filter(user_id).filter(
             transaction_time__gte=start_date,
             transaction_time__lte=end_date,
         )
@@ -101,9 +84,7 @@ class TransactionRepository:
         return rows[:limit], total_count
 
     async def update_field(self, transaction: Transaction, field: str, value) -> None:
-        if field == "tag":
-            value = _normalize_tag(value)
-        elif field == "category":
+        if field == "category":
             value = _normalize_category(value)
         setattr(transaction, field, value)
         await transaction.save()
@@ -117,13 +98,11 @@ class TransactionRepository:
         user_id: int,
         start: datetime,
         end: datetime,
-        tag: str | None = None,
     ) -> float:
         """Sum signed amounts in [start, end] (UTC). Caller passes SGT
-        windows converted to UTC via app.utils.timezone.sgt_to_utc().
-        Optional ``tag`` filters to a single tag (case-insensitive)."""
+        windows converted to UTC via app.utils.timezone.sgt_to_utc()."""
         result = (
-            await self._base_filter(user_id, tag)
+            await self._base_filter(user_id)
             .filter(
                 transaction_time__gte=start,
                 transaction_time__lte=end,
@@ -138,10 +117,9 @@ class TransactionRepository:
         self,
         user_id: int,
         merchant_substring: str,
-        tag: str | None = None,
     ) -> list[Transaction]:
         return (
-            await self._base_filter(user_id, tag)
+            await self._base_filter(user_id)
             .filter(merchant__icontains=merchant_substring)
             .order_by("-transaction_time")
             .limit(200)

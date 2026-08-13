@@ -16,7 +16,6 @@ from app.telegram.handlers.management import (
     confirm_handler,
     delete_handler,
     edit_handler,
-    tag_handler,
 )
 from app.telegram.handlers.queries import (
     latest_handler,
@@ -41,7 +40,6 @@ __all__ = [
     "range_handler",
     "search_handler",
     "start_handler",
-    "tag_handler",
     "today_handler",
     "week_handler",
 ]

@@ -126,9 +126,6 @@ def render_transactions_table(transactions: list, _title: str = "Transactions") 
         return f"<{tag}>{_escape_html(text)}</{tag}>"
 
     headers = ["#", "DATE", "TIME", "AMOUNT", "METHOD", "MERCHANT", "CATEGORY"]
-    has_any_tag = any(getattr(txn, "tag", None) for txn in transactions)
-    if has_any_tag:
-        headers.append("TAG")
     head_row = "<tr>" + "".join(cell(h, header=True) for h in headers) + "</tr>"
 
     body_rows = []
@@ -151,10 +148,8 @@ def render_transactions_table(transactions: list, _title: str = "Transactions") 
             + cell(_truncate(txn.payment_method.value, 22))
             + cell(_truncate(normalize_merchant(txn.merchant), 32))
             + cell(_truncate(category_display, 14))
+            + "</tr>"
         )
-        if has_any_tag:
-            row += cell(_truncate(getattr(txn, "tag", None) or "", 16))
-        row += "</tr>"
         body_rows.append(row)
 
     return (

@@ -19,7 +19,6 @@ from app.telegram.handlers import (
     range_handler,
     search_handler,
     start_handler,
-    tag_handler,
     today_handler,
     week_handler,
 )

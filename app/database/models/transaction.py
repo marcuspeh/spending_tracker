@@ -11,7 +11,6 @@ class Transaction(Model):
     merchant = fields.CharField(max_length=255)
     payment_method = fields.CharEnumField(PaymentMethod)
     description = fields.TextField(null=True)
-    tag = fields.CharField(max_length=64, null=True, db_index=True)
     category = fields.CharField(max_length=32, null=True, db_index=True)
     transaction_time = fields.DatetimeField()
     created_at = fields.DatetimeField(db_default=fields.Now())
