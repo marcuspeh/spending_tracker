@@ -1,11 +1,16 @@
-"""Tests for the LLM-backed categorizer."""
+"""Tests for the LLM-backed tagger.
+
+The public function is :func:`app.services.categorizer.tag_for`; the
+old name :func:`categorize` is kept as an alias and exercised through
+this file to avoid keeping two parallel test suites alive.
+"""
 
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import httpx
 import pytest
 
-from app.services.categorizer import categorize
+from app.services.categorizer import categorize, tag_for
 
 
 def _mock_response(
@@ -35,7 +40,7 @@ class _MockClient:
     returns the supplied response.
 
     Exposes ``captured_payload`` so tests can inspect the request body
-    that the categorizer sent.
+    that the tagger sent.
     """
 
     def __init__(self, response: httpx.Response | None = None, error: Exception | None = None):
@@ -60,10 +65,10 @@ class _MockClient:
 
 
 class _MockCache:
-    """Async fake of MerchantCategoryCacheRepository.
+    """Async fake of MerchantTagCacheRepository.
 
-    Stores inserted entries in-memory so tests can verify the
-    categoricalizer called upsert() with the right (key, category).
+    Stores inserted entries in-memory so tests can verify the tagger
+    called upsert() with the right (key, tag).
     """
 
     def __init__(self, *, hit: str | None = None, raise_on_upsert: bool = False):
@@ -76,10 +81,10 @@ class _MockCache:
         self.get_calls.append(merchant_key)
         return self._hit
 
-    async def upsert(self, merchant_key: str, category: str) -> None:
+    async def upsert(self, merchant_key: str, tag: str) -> None:
         if self._raise_on_upsert:
             raise RuntimeError("db down")
-        self.upserts.append((merchant_key, category))
+        self.upserts.append((merchant_key, tag))
 
 
 @pytest.fixture
@@ -98,39 +103,39 @@ def settings():
 
 @pytest.fixture
 def cache():
-    """Mock MerchantCategoryCacheRepository with no cache hits.
+    """Mock MerchantTagCacheRepository with no cache hits.
 
-    The categorizer imports the class at module load time, so we patch
-    the imported name on the categorizer module itself. That overrides
-    the binding the categorizer actually uses.
+    The tagger imports the class at module load time, so we patch the
+    imported name on the categorizer module itself. That overrides the
+    binding the tagger actually uses.
     """
     from app.services import categorizer
 
     fake = _MockCache()
     with patch.object(
-        categorizer, "MerchantCategoryCacheRepository", return_value=fake
+        categorizer, "MerchantTagCacheRepository", return_value=fake
     ):
         yield fake
 
 
-class TestCategorize:
+class TestTagFor:
     @pytest.mark.asyncio
-    async def test_returns_category_when_in_set(self, settings, cache):
+    async def test_returns_tag_when_in_set(self, settings, cache):
         resp = _mock_response("food")
         with patch("app.services.categorizer.httpx.AsyncClient", return_value=_MockClient(resp)):
-            assert await categorize("STARBUCKS") == "food"
+            assert await tag_for("STARBUCKS") == "food"
 
     @pytest.mark.asyncio
     async def test_lowercases_and_strips_punctuation(self, settings, cache):
         resp = _mock_response("  Transport.\n")
         with patch("app.services.categorizer.httpx.AsyncClient", return_value=_MockClient(resp)):
-            assert await categorize("GRAB") == "transport"
+            assert await tag_for("GRAB") == "transport"
 
     @pytest.mark.asyncio
     async def test_out_of_set_returns_none(self, settings, cache):
         resp = _mock_response("alien-thing")
         with patch("app.services.categorizer.httpx.AsyncClient", return_value=_MockClient(resp)):
-            assert await categorize("MYSTERY") is None
+            assert await tag_for("MYSTERY") is None
 
     @pytest.mark.asyncio
     async def test_network_error_returns_none(self, settings, cache):
@@ -138,7 +143,7 @@ class TestCategorize:
             "app.services.categorizer.httpx.AsyncClient",
             return_value=_MockClient(error=httpx.ConnectError("boom")),
         ):
-            assert await categorize("STARBUCKS") is None
+            assert await tag_for("STARBUCKS") is None
 
     @pytest.mark.asyncio
     async def test_timeout_returns_none(self, settings, cache):
@@ -146,17 +151,15 @@ class TestCategorize:
             "app.services.categorizer.httpx.AsyncClient",
             return_value=_MockClient(error=httpx.TimeoutException("slow")),
         ):
-            assert await categorize("GRAB") is None
+            assert await tag_for("GRAB") is None
 
     @pytest.mark.asyncio
     async def test_bad_json_returns_none(self, settings, cache):
         # Build a response whose body is valid JSON but missing keys.
-        import json
-
         request = httpx.Request("POST", "https://example.test")
         resp = httpx.Response(200, content=b'{"bogus": true}', request=request)
         with patch("app.services.categorizer.httpx.AsyncClient", return_value=_MockClient(resp)):
-            assert await categorize("GRAB") is None
+            assert await tag_for("GRAB") is None
 
     @pytest.mark.asyncio
     async def test_no_api_key_returns_none(self, cache):
@@ -165,7 +168,7 @@ class TestCategorize:
         fake = Settings(llm_api_key="")
         with patch("app.services.categorizer.get_settings", return_value=fake):
             # Should not raise and should not call the network.
-            assert await categorize("STARBUCKS") is None
+            assert await tag_for("STARBUCKS") is None
 
 
 class TestCache:
@@ -178,14 +181,14 @@ class TestCache:
         # Cache returns "food" upfront — the LLM must NOT be called.
         cache = _MockCache(hit="food")
         with patch.object(
-            categorizer, "MerchantCategoryCacheRepository", return_value=cache
+            categorizer, "MerchantTagCacheRepository", return_value=cache
         ):
             mock_client = _MockClient(_mock_response("transport"))
             with patch(
                 "app.services.categorizer.httpx.AsyncClient",
                 return_value=mock_client,
             ):
-                result = await categorize("STARBUCKS")
+                result = await tag_for("STARBUCKS")
 
         assert result == "food"
         assert mock_client.captured_payload is None, "LLM should not be called on cache hit"
@@ -197,16 +200,16 @@ class TestCache:
 
         cache = _MockCache()
         with patch.object(
-            categorizer, "MerchantCategoryCacheRepository", return_value=cache
+            categorizer, "MerchantTagCacheRepository", return_value=cache
         ):
             with patch(
                 "app.services.categorizer.httpx.AsyncClient",
                 return_value=_MockClient(_mock_response("shopping")),
             ):
-                result = await categorize("CHOCFIN")
+                result = await tag_for("CHOCFIN")
 
         assert result == "shopping"
-        # Upsert called with the normalized merchant key + category.
+        # Upsert called with the normalized merchant key + tag.
         assert cache.upserts == [("chocfin", "shopping")]
 
     @pytest.mark.asyncio
@@ -215,7 +218,7 @@ class TestCache:
 
         cache = _MockCache()
         with patch.object(
-            categorizer, "MerchantCategoryCacheRepository", return_value=cache
+            categorizer, "MerchantTagCacheRepository", return_value=cache
         ):
             with patch(
                 "app.services.categorizer.httpx.AsyncClient",
@@ -223,7 +226,7 @@ class TestCache:
             ):
                 # Mixed-case + whitespace merchant. The cache key should
                 # be the lowercased trimmed form.
-                await categorize("  Starbucks  ")
+                await tag_for("  Starbucks  ")
 
         assert cache.get_calls == ["starbucks"]
         assert cache.upserts == [("starbucks", "food")]
@@ -234,13 +237,13 @@ class TestCache:
 
         cache = _MockCache()
         with patch.object(
-            categorizer, "MerchantCategoryCacheRepository", return_value=cache
+            categorizer, "MerchantTagCacheRepository", return_value=cache
         ):
             with patch(
                 "app.services.categorizer.httpx.AsyncClient",
                 return_value=_MockClient(_mock_response("alien-thing")),
             ):
-                result = await categorize("MYSTERY")
+                result = await tag_for("MYSTERY")
 
         assert result is None
         # No upsert when the LLM response is garbage.
@@ -252,7 +255,7 @@ class TestCache:
 
         cache = _MockCache(raise_on_upsert=True)
         with patch.object(
-            categorizer, "MerchantCategoryCacheRepository", return_value=cache
+            categorizer, "MerchantTagCacheRepository", return_value=cache
         ):
             with patch(
                 "app.services.categorizer.httpx.AsyncClient",
@@ -260,7 +263,7 @@ class TestCache:
             ):
                 # Must NOT raise — the LLM response is still returned
                 # to the caller; only the cache write is dropped.
-                result = await categorize("CHOCFIN")
+                result = await tag_for("CHOCFIN")
 
         assert result == "shopping"
 
@@ -270,9 +273,9 @@ class TestCache:
 
         cache = _MockCache()
         with patch.object(
-            categorizer, "MerchantCategoryCacheRepository", return_value=cache
+            categorizer, "MerchantTagCacheRepository", return_value=cache
         ):
-            result = await categorize("")
+            result = await tag_for("")
 
         assert result is None
         assert cache.get_calls == []
@@ -281,7 +284,7 @@ class TestCache:
 class TestPayload:
     """Verify the request body shape sent to the LLM.
 
-    The categorizer must:
+    The tagger must:
       - Cap max_tokens at 16 (so a single-word answer isn't truncated when
         the model needs to emit a few more tokens for the prefix).
       - Disable thinking via ``thinking: {type: "disabled"}`` — this is
@@ -295,10 +298,10 @@ class TestPayload:
     async def test_payload_shape(self, settings, cache):
         mock_client = _MockClient(_mock_response("food"))
         with patch("app.services.categorizer.httpx.AsyncClient", return_value=mock_client):
-            await categorize("STARBUCKS")
+            await tag_for("STARBUCKS")
 
         payload = mock_client.captured_payload
-        assert payload is not None, "categorizer did not call the LLM"
+        assert payload is not None, "tagger did not call the LLM"
         assert payload["model"] == "test-model"
         assert payload["max_tokens"] == 16
         assert payload["temperature"] == 0.0
@@ -319,6 +322,18 @@ class TestPayload:
     async def test_payload_uses_settings(self, settings, cache):
         mock_client = _MockClient(_mock_response("shopping"))
         with patch("app.services.categorizer.httpx.AsyncClient", return_value=mock_client):
-            await categorize("CHOCFIN")
+            await tag_for("CHOCFIN")
 
         assert mock_client.captured_payload["model"] == "test-model"
+
+
+# ---------------------------------------------------------------------------
+# Backwards-compatibility: the public API moved from ``categorize`` to
+# ``tag_for`` but the old name is kept as an alias. The tests below
+# confirm the alias still points at the same implementation.
+# ---------------------------------------------------------------------------
+
+
+class TestCategorizeAlias:
+    def test_categorize_is_tag_for(self):
+        assert categorize is tag_for

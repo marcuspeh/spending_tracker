@@ -4,7 +4,7 @@ from app.database.enums import ImportStatus, PaymentMethod
 from app.database.repositories.imported_email import ImportedEmailRepository
 from app.database.repositories.transaction import TransactionRepository
 from app.database.repositories.user_email import UserEmailRepository
-from app.services.categorizer import categorize_or_default
+from app.services.categorizer import tag_for_or_default
 from app.services.notification import NotificationService
 from app.services.parsers.base import ParserError
 from app.services.parsers.registry import ParserRegistry
@@ -91,19 +91,19 @@ class EmailIngestionService:
         payment_method = PaymentMethod(parsed.payment_method)
         transaction_time_utc = sgt_to_utc(parsed.transaction_time)
 
-        # Auto-categorize. Read-through merchant cache makes this
-        # near-free on subsequent emails with the same merchant — only
-        # the first email of each unique merchant hits the LLM. When
-        # the LLM fails or returns a value outside the allowed set, the
-        # row is saved with category="other" so every transaction still
+        # Auto-tag. Read-through merchant cache makes this near-free on
+        # subsequent emails with the same merchant — only the first
+        # email of each unique merchant hits the LLM. When the LLM
+        # fails or returns a value outside the allowed set, the row is
+        # saved with tag="miscellaneous" so every transaction still
         # carries a usable label.
-        category: str | None = None
+        tag: str | None = None
         if parsed.merchant:
             try:
-                category = await categorize_or_default(parsed.merchant, default="other")
+                tag = await tag_for_or_default(parsed.merchant)
             except Exception:
                 # Cache lookup / upsert failures must not block ingestion.
-                category = "other"
+                tag = "miscellaneous"
 
         txn = await self.transaction_repo.insert(
             user_id=user_email.user_id,
@@ -112,7 +112,7 @@ class EmailIngestionService:
             payment_method=payment_method,
             transaction_time=transaction_time_utc,
             description=parsed.description,
-            category=category,
+            tag=tag,
         )
 
         if self.notification_service is not None:

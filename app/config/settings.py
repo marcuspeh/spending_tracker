@@ -43,12 +43,12 @@ class Settings(BaseSettings):
     # Logging
     log_level: str = Field(default="INFO")
 
-    # LLM (used to auto-categorize transactions).
-    # Settings are optional — if absent the categorizer is a no-op and
-    # `category` is left NULL on insert. The merchant is the only input
-    # sent to the model; the prompt constrains the output to one of the
-    # fixed categories defined in
-    # app.services.categorizer.DEFAULT_CATEGORIES.
+    # LLM (used to auto-tag transactions).
+    # Settings are optional — if absent the tagger is a no-op and
+    # `tag` falls back to "miscellaneous" on insert. The merchant is the
+    # only input sent to the model; the prompt constrains the output to
+    # one of the fixed tags defined in
+    # app.services.categorizer.DEFAULT_TAGS.
     llm_base_url: str = Field(default="https://api.openrouter.ai/api/v1")
     llm_api_key: str = Field(default="")
     llm_model: str = Field(default="minimax/minimax-m2.7")

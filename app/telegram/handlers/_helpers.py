@@ -57,21 +57,21 @@ def format_transaction(txn: Any, index: int) -> str:
     return (
         f"{index}. {sign}{format_amount(txn.amount)} at {txn.merchant}\n"
         f"   {time_sgt.strftime('%d %b %Y %H:%M')} | {txn.payment_method.value}\n"
-        f"   Category: {describe_category_for_display(txn)}"
+        f"   Tag: {describe_tag_for_display(txn)}"
     )
 
 
-def describe_category_for_display(txn: Any) -> str:
-    """Return the category string for user-facing display.
+def describe_tag_for_display(txn: Any) -> str:
+    """Return the tag string for user-facing display.
 
     Capitalizes the first letter so users see "Food" instead of the
-    DB-stored lowercased form. Returns ``"-"`` when the category is
-    missing (LLM disabled or failed).
+    DB-stored lowercased form. Returns ``"-"`` when the tag is missing
+    (LLM disabled or failed).
     """
-    category = getattr(txn, "category", None) or "-"
-    if category == "-":
+    tag = getattr(txn, "tag", None) or "-"
+    if tag == "-":
         return "-"
-    return category.capitalize()
+    return tag.capitalize()
 
 
 def format_transactions(transactions: list, title: str = "Transactions") -> str:
@@ -125,7 +125,7 @@ def render_transactions_table(transactions: list, _title: str = "Transactions") 
         tag = "th" if header else "td"
         return f"<{tag}>{_escape_html(text)}</{tag}>"
 
-    headers = ["#", "DATE", "TIME", "AMOUNT", "METHOD", "MERCHANT", "CATEGORY"]
+    headers = ["#", "DATE", "TIME", "AMOUNT", "METHOD", "MERCHANT", "TAG"]
     head_row = "<tr>" + "".join(cell(h, header=True) for h in headers) + "</tr>"
 
     body_rows = []
@@ -134,11 +134,11 @@ def render_transactions_table(transactions: list, _title: str = "Transactions") 
         sign = "-" if txn.amount < 0 else "+"
         amount = f"{sign}{format_amount(txn.amount)}"
         # Capitalize the first letter for display; the DB stores the
-        # category lowercased. Empty string when unset so the cell is
-        # blank instead of "-".
-        category_display = describe_category_for_display(txn)
-        if category_display == "-":
-            category_display = ""
+        # tag lowercased. Empty string when unset so the cell is blank
+        # instead of "-".
+        tag_display = describe_tag_for_display(txn)
+        if tag_display == "-":
+            tag_display = ""
         row = (
             "<tr>"
             + cell(str(offset))
@@ -147,7 +147,7 @@ def render_transactions_table(transactions: list, _title: str = "Transactions") 
             + cell(amount)
             + cell(_truncate(txn.payment_method.value, 22))
             + cell(_truncate(normalize_merchant(txn.merchant), 32))
-            + cell(_truncate(category_display, 14))
+            + cell(_truncate(tag_display, 14))
             + "</tr>"
         )
         body_rows.append(row)

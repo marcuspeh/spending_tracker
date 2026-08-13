@@ -19,11 +19,11 @@ from app.services.parsers.registry import ParserRegistry
 
 
 @pytest.fixture(autouse=True)
-def _mock_categorize(monkeypatch):
-    """Stub the categorizer so unit tests don't hit the network or DB."""
+def _mock_tag(monkeypatch):
+    """Stub the tagger so unit tests don't hit the network or DB."""
     import app.services.email_ingestion as ei
 
-    monkeypatch.setattr(ei, "categorize_or_default", AsyncMock(return_value=None))
+    monkeypatch.setattr(ei, "tag_for_or_default", AsyncMock(return_value=None))
 
 
 # ---------- helpers ----------

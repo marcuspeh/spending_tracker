@@ -34,14 +34,14 @@ Viewing transactions:
 
 Managing transactions:
 /add <amount> <merchant> [description] [date] - Add manual transaction
-/edit <index> <field> <value> - Edit a transaction (amount, merchant, description, transaction_time, category)
+/edit <index> <field> <value> - Edit a transaction (amount, merchant, description, transaction_time, tag)
 /delete <index> - Start delete confirmation
 /confirm - Confirm a pending delete (omit the index)
 /confirm <index> - Confirm a specific pending delete
 /cancel - Cancel all pending deletes
 /cancel <index> - Cancel a specific pending delete
 
-Every transaction is auto-categorized (food, transport, groceries, shopping, bills, subscriptions, health, entertainment, travel, transfers, fees, refunds, cash, other) on insert. If the LLM is misconfigured or fails, the category falls back to ``other``. Use /edit <index> category <value> to set a different value manually.
+Every transaction is auto-tagged (food, transport, groceries, shopping, subscriptions, health, entertainment, travel, transfers, fees, refunds, cash, miscellaneous) on insert. If the LLM is misconfigured or fails, the tag falls back to ``miscellaneous``. Use /edit <index> tag <value> to set a different value manually.
 
 Typical flow:
 
@@ -52,8 +52,8 @@ Typical flow:
 
   /latest
     -> [rich table]
-  /categorize 1
-    -> "Category: Food\nMerchant: STARBUCKS"
+  /edit 1 tag food
+    -> "Updated transaction 1: tag=food"
 
 Other:
 /ping - Check bot is alive

@@ -13,7 +13,7 @@ from app.telegram.auth import auth_handler
 from app.telegram.handlers._helpers import (
     _pending_deletes,
     clear_recent,
-    describe_category_for_display,
+    describe_tag_for_display,
     format_amount,
     resolve_recent,
 )
@@ -86,7 +86,7 @@ async def add_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
         f"Transaction added!\n"
         f"{format_amount(txn.amount)} at {txn.merchant}\n"
         f"Time: {time_sgt.strftime('%d %b %Y %H:%M')}\n"
-        f"Category: {describe_category_for_display(txn)}"
+        f"Tag: {describe_tag_for_display(txn)}"
     )
 
 
@@ -154,7 +154,7 @@ def _describe(txn: Any) -> str:
         f"You {('spent' if txn.amount >= 0 else 'received')} "
         f"{sign}{format_amount(txn.amount)} at {txn.merchant}\n"
         f"   {time_sgt.strftime('%d %b %Y %H:%M')} | {txn.payment_method.value}\n"
-        f"   Category: {describe_category_for_display(txn)}"
+        f"   Tag: {describe_tag_for_display(txn)}"
     )
 
 

@@ -8,11 +8,11 @@ from app.database.enums import PaymentMethod
 from app.database.models.transaction import Transaction
 
 
-def _normalize_category(category: str | None) -> str | None:
-    """Lowercase + strip a category. ``None`` and '' both return ``None``."""
-    if category is None:
+def _normalize_tag(tag: str | None) -> str | None:
+    """Lowercase + strip a tag. ``None`` and '' both return ``None``."""
+    if tag is None:
         return None
-    cleaned = category.strip().lower()
+    cleaned = tag.strip().lower()
     return cleaned or None
 
 
@@ -25,7 +25,7 @@ class TransactionRepository:
         payment_method: PaymentMethod,
         transaction_time: datetime,
         description: str | None = None,
-        category: str | None = None,
+        tag: str | None = None,
     ) -> Transaction:
         if amount is None:
             amount = Decimal("0")
@@ -38,7 +38,7 @@ class TransactionRepository:
             payment_method=payment_method,
             transaction_time=transaction_time,
             description=description,
-            category=_normalize_category(category),
+            tag=_normalize_tag(tag),
         )
         return transaction
 
@@ -84,8 +84,8 @@ class TransactionRepository:
         return rows[:limit], total_count
 
     async def update_field(self, transaction: Transaction, field: str, value) -> None:
-        if field == "category":
-            value = _normalize_category(value)
+        if field == "tag":
+            value = _normalize_tag(value)
         setattr(transaction, field, value)
         await transaction.save()
 

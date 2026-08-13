@@ -11,7 +11,6 @@ from app.telegram.handlers._helpers import render_transactions_table
 def _fake_txn(
     amount: str = "3.98",
     merchant: str = "STARBUCKS",
-    category: str | None = None,
     tag: str | None = None,
 ) -> MagicMock:
     txn = MagicMock()
@@ -19,29 +18,28 @@ def _fake_txn(
     txn.merchant = merchant
     txn.payment_method = PaymentMethod.DBS_CC
     txn.transaction_time = datetime(2026, 7, 16, 12, 39)
-    txn.category = category
     txn.tag = tag
     return txn
 
 
-class TestCategoryCapitalization:
-    """The CATEGORY column capitalizes the first letter for display."""
+class TestTagCapitalization:
+    """The TAG column capitalizes the first letter for display."""
 
     def test_capitalizes_lowercase(self):
-        html = render_transactions_table([_fake_txn(category="food")])
+        html = render_transactions_table([_fake_txn(tag="food")])
         assert ">Food<" in html
 
     def test_capitalizes_uppercase(self):
-        html = render_transactions_table([_fake_txn(category="FOOD")])
+        html = render_transactions_table([_fake_txn(tag="FOOD")])
         assert ">Food<" in html
 
-    def test_displays_empty_when_category_none(self):
-        html = render_transactions_table([_fake_txn(category=None)])
+    def test_displays_empty_when_tag_none(self):
+        html = render_transactions_table([_fake_txn(tag=None)])
         # Empty cell — no entry between the surrounding tags.
         assert "<td></td>" in html
 
     def test_db_stored_lowercase_remains_in_html(self):
-        html = render_transactions_table([_fake_txn(category="shopping")])
+        html = render_transactions_table([_fake_txn(tag="shopping")])
         # The raw lowercase must NOT appear in the cell (otherwise the
         # bot would be storing the original form somewhere).
         assert ">Shopping<" in html
@@ -70,39 +68,46 @@ class TestNormalizeMerchantInTable:
 class TestColumns:
     """The column set / ordering is stable."""
 
-    def test_always_shows_category_column(self):
+    def test_always_shows_tag_column(self):
         html = render_transactions_table([_fake_txn()])
-        assert ">CATEGORY<" in html
-
-    def test_no_tag_column(self):
-        # /tag has been removed; the table should never include a TAG column.
-        html = render_transactions_table([_fake_txn()])
-        assert ">TAG<" not in html
+        assert ">TAG<" in html
 
     def test_renders_index_1(self):
         html = render_transactions_table([_fake_txn()])
         assert ">1<" in html
 
 
-class TestDescribeCategoryForDisplay:
+class TestDescribeTagForDisplay:
     """The shared capitalize-for-display helper."""
 
     def test_capitalizes_lowercase(self):
-        from app.telegram.handlers._helpers import describe_category_for_display
+        from app.telegram.handlers._helpers import describe_tag_for_display
 
-        assert describe_category_for_display(_fake_txn(category="food")) == "Food"
+        assert describe_tag_for_display(_fake_txn(tag="food")) == "Food"
 
     def test_capitalizes_uppercase(self):
-        from app.telegram.handlers._helpers import describe_category_for_display
+        from app.telegram.handlers._helpers import describe_tag_for_display
 
-        assert describe_category_for_display(_fake_txn(category="FOOD")) == "Food"
+        assert describe_tag_for_display(_fake_txn(tag="FOOD")) == "Food"
 
     def test_returns_dash_when_none(self):
-        from app.telegram.handlers._helpers import describe_category_for_display
+        from app.telegram.handlers._helpers import describe_tag_for_display
 
-        assert describe_category_for_display(_fake_txn(category=None)) == "-"
+        assert describe_tag_for_display(_fake_txn(tag=None)) == "-"
 
     def test_returns_dash_when_empty_string(self):
-        from app.telegram.handlers._helpers import describe_category_for_display
+        from app.telegram.handlers._helpers import describe_tag_for_display
 
-        assert describe_category_for_display(_fake_txn(category="")) == "-"
+        assert describe_tag_for_display(_fake_txn(tag="")) == "-"
+
+
+class TestBackwardsCompatibility:
+    """The old ``describe_category_for_display`` alias must still work."""
+
+    def test_alias_still_works(self):
+        from app.telegram.handlers._helpers import (
+            describe_category_for_display,
+            describe_tag_for_display,
+        )
+
+        assert describe_category_for_display is describe_tag_for_display
