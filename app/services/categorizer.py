@@ -171,3 +171,32 @@ async def categorize(merchant: str) -> str | None:
             "categorize_cache_upsert_failed: %s merchant=%s", exc, merchant
         )
     return category
+
+
+async def categorize_or_default(
+    merchant: str, default: str = "other"
+) -> str | None:
+    """Return a category for ``merchant``, falling back to ``default``.
+
+    Identical to :func:`categorize` except that any failure (network
+    error, timeout, bad JSON, out-of-set reply, missing API key, empty
+    merchant) returns ``default`` instead of ``None``. The default value
+    must be a member of :data:`DEFAULT_CATEGORIES`; if it isn't, the
+    caller gets ``None`` (i.e. ``default`` is **not** persisted
+    unvalidated — it has to be a real category).
+
+    Pass-through paths still return ``None`` when the LLM is genuinely
+    unable to produce a valid category AND ``default`` is not a real
+    category. The cache is **not** populated with the default — only
+    genuine LLM answers get cached, so users can later retry and
+    overwrite the default via /edit.
+    """
+    if default not in DEFAULT_CATEGORIES:
+        logger.warning(
+            "categorize_or_default_invalid_default: default=%r", default
+        )
+        return None
+    category = await categorize(merchant)
+    if category is not None:
+        return category
+    return default

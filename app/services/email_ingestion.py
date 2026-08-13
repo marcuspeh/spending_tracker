@@ -4,7 +4,7 @@ from app.database.enums import ImportStatus, PaymentMethod
 from app.database.repositories.imported_email import ImportedEmailRepository
 from app.database.repositories.transaction import TransactionRepository
 from app.database.repositories.user_email import UserEmailRepository
-from app.services.categorizer import categorize
+from app.services.categorizer import categorize_or_default
 from app.services.notification import NotificationService
 from app.services.parsers.base import ParserError
 from app.services.parsers.registry import ParserRegistry
@@ -93,16 +93,17 @@ class EmailIngestionService:
 
         # Auto-categorize. Read-through merchant cache makes this
         # near-free on subsequent emails with the same merchant — only
-        # the first email of each unique merchant hits the LLM. Categorize
-        # is defensive: network errors, timeouts, bad JSON, and out-of-set
-        # replies all return None, so a transient LLM failure never blocks
-        # ingestion.
+        # the first email of each unique merchant hits the LLM. When
+        # the LLM fails or returns a value outside the allowed set, the
+        # row is saved with category="other" so every transaction still
+        # carries a usable label.
         category: str | None = None
         if parsed.merchant:
             try:
-                category = await categorize(parsed.merchant)
+                category = await categorize_or_default(parsed.merchant, default="other")
             except Exception:
-                category = None
+                # Cache lookup / upsert failures must not block ingestion.
+                category = "other"
 
         txn = await self.transaction_repo.insert(
             user_id=user_email.user_id,

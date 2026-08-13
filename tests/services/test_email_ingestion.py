@@ -17,6 +17,15 @@ from app.services.email_ingestion import EmailIngestionService
 from app.services.parsers.base import ParsedTransaction, ParserError
 from app.services.parsers.registry import ParserRegistry
 
+
+@pytest.fixture(autouse=True)
+def _mock_categorize(monkeypatch):
+    """Stub the categorizer so unit tests don't hit the network or DB."""
+    import app.services.email_ingestion as ei
+
+    monkeypatch.setattr(ei, "categorize_or_default", AsyncMock(return_value=None))
+
+
 # ---------- helpers ----------
 
 
