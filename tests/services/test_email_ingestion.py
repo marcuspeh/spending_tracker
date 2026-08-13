@@ -26,9 +26,6 @@ def _mock_tag(monkeypatch):
     monkeypatch.setattr(ei, "tag_for_or_default", AsyncMock(return_value=None))
 
 
-# ---------- helpers ----------
-
-
 @dataclass
 class FakeUserEmail:
     user_id: int = 42
@@ -100,14 +97,10 @@ def _email(**overrides: Any) -> dict:
         "to": ["user@example.com"],
         "cc": [],
     }
-    # Python won't accept `from` as a kwarg name; remap it.
     if "from_" in overrides:
         overrides["from"] = overrides.pop("from_")
     base.update(overrides)
     return base
-
-
-# ---------- tests ----------
 
 
 class TestProcessEmailSuccess:
@@ -124,7 +117,6 @@ class TestProcessEmailSuccess:
 
     @pytest.mark.asyncio
     async def test_user_email_string_form(self):
-        """`to` as a single string (not list) should still resolve."""
         service, mocks = _make_service(
             user_email=FakeUserEmail(),
             parsed=_parsed(),
@@ -204,17 +196,12 @@ class TestProcessEmailDedup:
 
     @pytest.mark.asyncio
     async def test_integrity_error_on_insert_treated_as_already_seen(self):
-        """If insert returns None (IntegrityError caught in repo), we should
-        not crash and should not double-insert a transaction."""
         service, mocks = _make_service(
             user_email=FakeUserEmail(),
             parsed=_parsed(),
         )
-        # First insert (status record) returns None — duplicate
         mocks["imported"].insert = AsyncMock(return_value=None)
         status = await service.process_email(_email())
-        # Transaction was still inserted before the dedup conflict — that's
-        # the documented behavior. The next poll will skip via exists_by_message_id.
         assert status == ImportStatus.SUCCESS
 
 
@@ -251,7 +238,6 @@ class TestNotificationOnSuccess:
         status = await service.process_email(_email())
         assert status == ImportStatus.SUCCESS
         notification_mock.notify_transaction.assert_awaited_once()
-        # First arg = user_id, second arg = the inserted txn
         args = notification_mock.notify_transaction.await_args.args
         assert args[0] == 42
         assert args[1].id == 1
@@ -271,8 +257,6 @@ class TestNotificationOnSuccess:
 
     @pytest.mark.asyncio
     async def test_works_without_notification_service(self):
-        """If no notification service is wired (e.g. in tests), ingestion
-        must still succeed and the transaction must still be recorded."""
         service, mocks = _make_service(
             user_email=FakeUserEmail(),
             parsed=_parsed(),
@@ -286,22 +270,14 @@ class TestNotificationOnSuccess:
 class TestUserAttributionTrust:
     @pytest.mark.asyncio
     async def test_does_not_match_from_field(self):
-        """The `from` field is bank-controlled; it must NOT be used to
-        attribute the transaction to a user. Without a matching to/cc,
-        the result is FAILED."""
         service, mocks = _make_service(
             user_email=None,
             parsed=_parsed(),
         )
-        # Even if the bank's domain somehow matches a user email, we should
-        # not use it for ownership.
         mocks["user_email"].find_by_email = AsyncMock(return_value=None)
         status = await service.process_email(
             _email(from_="attacker-controlled-but-bank-domain@example.com")
         )
         assert status == ImportStatus.FAILED
-        # The bank's `from` address was never even queried — only to/cc.
-        # (We asserted via the mock: find_by_email returns None because the
-        # value passed to it is from to/cc.)
         called_with = mocks["user_email"].find_by_email.await_args.args[0]
         assert called_with != "attacker-controlled-but-bank-domain@example.com"

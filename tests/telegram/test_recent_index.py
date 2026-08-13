@@ -22,7 +22,6 @@ def _reset():
 class TestRememberAndResolve:
     def test_remember_stores_1_based_mapping(self):
         remember_recent(chat_id=42, txn_ids=[101, 102, 103])
-        # Indices are 1-based for the user.
         assert resolve_recent(42, "1") == 101
         assert resolve_recent(42, "2") == 102
         assert resolve_recent(42, "3") == 103
@@ -32,10 +31,6 @@ class TestRememberAndResolve:
         assert resolve_recent(42, 1) == 101
 
     def test_resolve_returns_db_id_not_index(self):
-        """Regression: the previous implementation returned the index
-        instead of the cached DB id, causing /delete to look up a
-        nonexistent transaction.
-        """
         remember_recent(chat_id=42, txn_ids=[9999])
         result = resolve_recent(42, "1")
         assert result == 9999
@@ -58,7 +53,7 @@ class TestRememberAndResolve:
         remember_recent(chat_id=42, txn_ids=[101, 102])
         remember_recent(chat_id=42, txn_ids=[201])
         assert resolve_recent(42, "1") == 201
-        assert resolve_recent(42, "2") is None  # old index no longer valid
+        assert resolve_recent(42, "2") is None
 
 
 class TestClearRecent:
@@ -68,7 +63,6 @@ class TestClearRecent:
         assert resolve_recent(42, "1") is None
 
     def test_clear_is_idempotent(self):
-        # Should not raise even if nothing is cached.
         clear_recent(42)
         clear_recent(42)
 
@@ -82,9 +76,6 @@ class TestClearRecent:
 
 class TestChatIsolation:
     def test_different_chats_have_independent_indexes(self):
-        """Two users on different chat_ids shouldn't see each other's
-        transactions when they pass the same numeric index.
-        """
         remember_recent(chat_id=1, txn_ids=[555, 556])
         remember_recent(chat_id=2, txn_ids=[777])
         assert resolve_recent(1, "1") == 555

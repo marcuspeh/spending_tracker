@@ -33,7 +33,6 @@ class TestEditAmountCoercion:
         result = await svc.edit_transaction(99, 1, "amount", "12.50")
         assert result is not None
         repo.update_field.assert_awaited_once()
-        # value is float-coerced before being passed through
         args = repo.update_field.await_args.args
         assert args[1] == "amount"
         assert args[2] == pytest.approx(12.50)

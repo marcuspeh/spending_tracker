@@ -13,13 +13,7 @@ class TestDBSCCParser:
     def _make_email(self, subject: str = "", body: str = "", from_: str = "") -> dict:
         return {"subject": subject, "body": body, "from": from_}
 
-    # --- can_parse ---
-
     def test_can_parse_dbs_card_subject(self):
-        # Card-alert subjects always come from DBS, so the parser should
-        # claim any "Card Transaction Alert" / "Card Refund Alert" email
-        # that has an amount — even without an explicit DBS signal in the
-        # body.
         email = self._make_email(
             subject="Card Transaction Alert",
             from_="ibanking.alert@dbs.com",
@@ -50,8 +44,6 @@ class TestDBSCCParser:
             from_="ibanking.alert@dbs.com",
         )
         assert self.parser.can_parse(email) is False
-
-    # --- parse ---
 
     def test_parse_purchase(self):
         email = self._make_email(
@@ -88,7 +80,6 @@ class TestDBSCCParser:
             self.parser.parse(email)
 
     def test_parse_real_polled_email(self):
-        """Real DBS card email polled from Gmail (uid18)."""
         email = self._make_email(
             subject="Fwd: Card Transaction Alert",
             from_="hkmpeh@gmail.com",
@@ -104,8 +95,6 @@ class TestDBSCCParser:
         assert result.amount == Decimal("3.98")
         assert result.payment_method == "DBS_CC"
         assert result.merchant == "APPLE.COM/BILL"
-
-    # --- can_parse negative tests: substring collisions ---
 
     def test_cannot_parse_substring_collision_cardiology(self):
         email = self._make_email(

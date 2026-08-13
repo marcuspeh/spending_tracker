@@ -23,8 +23,6 @@ def _fake_txn(
 
 
 class TestTagCapitalization:
-    """The TAG column capitalizes the first letter for display."""
-
     def test_capitalizes_lowercase(self):
         html = render_transactions_table([_fake_txn(tag="food")])
         assert ">Food<" in html
@@ -35,20 +33,15 @@ class TestTagCapitalization:
 
     def test_displays_empty_when_tag_none(self):
         html = render_transactions_table([_fake_txn(tag=None)])
-        # Empty cell — no entry between the surrounding tags.
         assert "<td></td>" in html
 
     def test_db_stored_lowercase_remains_in_html(self):
         html = render_transactions_table([_fake_txn(tag="shopping")])
-        # The raw lowercase must NOT appear in the cell (otherwise the
-        # bot would be storing the original form somewhere).
         assert ">Shopping<" in html
         assert ">shopping<" not in html
 
 
 class TestNormalizeMerchantInTable:
-    """The MERCHANT column passes through normalize_merchant (lowercase)."""
-
     def test_grab_code_collapses_to_grab(self):
         html = render_transactions_table([_fake_txn(merchant="Grab* 4-C8C2JJACBELYWA")])
         assert ">grab<" in html
@@ -59,15 +52,11 @@ class TestNormalizeMerchantInTable:
         assert ">grab<" in html
 
     def test_passthrough_merchant(self):
-        # normalize_merchant lowercases; the table renderer uses the
-        # lowercased form for the cell.
         html = render_transactions_table([_fake_txn(merchant="STARBUCKS")])
         assert ">starbucks<" in html
 
 
 class TestColumns:
-    """The column set / ordering is stable."""
-
     def test_always_shows_tag_column(self):
         html = render_transactions_table([_fake_txn()])
         assert ">TAG<" in html
@@ -78,8 +67,6 @@ class TestColumns:
 
 
 class TestDescribeTagForDisplay:
-    """The shared capitalize-for-display helper."""
-
     def test_capitalizes_lowercase(self):
         from app.telegram.handlers._helpers import describe_tag_for_display
 

@@ -13,8 +13,6 @@ class TestDBSPayNowParser:
     def _make_email(self, subject: str = "", body: str = "", from_: str = "") -> dict:
         return {"subject": subject, "body": body, "from": from_}
 
-    # --- can_parse ---
-
     def test_can_parse_dbs_paynow(self):
         email = self._make_email(
             subject="PayNow Payment",
@@ -24,8 +22,6 @@ class TestDBSPayNowParser:
         assert self.parser.can_parse(email) is True
 
     def test_can_parse_paylah_funded_paynow(self):
-        # Some PayLah-funded transfers come from PayLah! Alerts but say
-        # "PayNow Transfer" in the body — those are PayNow, not PayLah.
         email = self._make_email(
             subject="Transaction Alerts",
             from_="paylah.alert@dbs.com",
@@ -34,7 +30,6 @@ class TestDBSPayNowParser:
         assert self.parser.can_parse(email) is True
 
     def test_cannot_parse_paylah_only(self):
-        # Pure PayLah (no PayNow mention) is left for PayLahParser.
         email = self._make_email(
             subject="Transaction Alerts",
             body="We refer to your PayLah! Scan & Pay Transfer.",
@@ -49,8 +44,6 @@ class TestDBSPayNowParser:
             from_="uob-noreply@uobgroup.com",
         )
         assert self.parser.can_parse(email) is False
-
-    # --- parse ---
 
     def test_parse_debit(self):
         email = self._make_email(
@@ -88,7 +81,6 @@ class TestDBSPayNowParser:
             self.parser.parse(email)
 
     def test_parse_real_polled_email(self):
-        """Real DBS PayNow debit funded from PayLah wallet (uid26)."""
         email = self._make_email(
             subject="Fwd: Transaction Alerts",
             from_="paylah.alert@dbs.com",

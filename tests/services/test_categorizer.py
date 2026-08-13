@@ -25,19 +25,11 @@ def _mock_response(
     request = httpx.Request("POST", "https://example.test")
     resp = httpx.Response(status_code, content=body, request=request)
     if raise_for_status:
-        # Force an error
         resp.status_code = 599
     return resp
 
 
 class _MockClient:
-    """Async context manager that returns a stub client whose ``post``
-    returns the supplied response.
-
-    Exposes ``captured_payload`` so tests can inspect the request body
-    that the tagger sent.
-    """
-
     def __init__(self, response: httpx.Response | None = None, error: Exception | None = None):
         self._response = response
         self._error = error
@@ -60,12 +52,6 @@ class _MockClient:
 
 
 class _MockCache:
-    """Async fake of MerchantTagCacheRepository.
-
-    Stores inserted entries in-memory so tests can verify the tagger
-    called upsert() with the right (key, tag).
-    """
-
     def __init__(self, *, hit: str | None = None, raise_on_upsert: bool = False):
         self._hit = hit
         self._raise_on_upsert = raise_on_upsert
@@ -84,7 +70,6 @@ class _MockCache:
 
 @pytest.fixture
 def settings():
-    """Patch settings so LLM_BASE_URL / LLM_API_KEY / LLM_MODEL are set."""
     from app.config.settings import Settings
 
     fake = Settings(
@@ -98,12 +83,6 @@ def settings():
 
 @pytest.fixture
 def cache():
-    """Mock MerchantTagCacheRepository with no cache hits.
-
-    The tagger imports the class at module load time, so we patch the
-    imported name on the categorizer module itself. That overrides the
-    binding the tagger actually uses.
-    """
     from app.services import categorizer
 
     fake = _MockCache()
@@ -150,7 +129,6 @@ class TestTagFor:
 
     @pytest.mark.asyncio
     async def test_bad_json_returns_none(self, settings, cache):
-        # Build a response whose body is valid JSON but missing keys.
         request = httpx.Request("POST", "https://example.test")
         resp = httpx.Response(200, content=b'{"bogus": true}', request=request)
         with patch("app.services.categorizer.httpx.AsyncClient", return_value=_MockClient(resp)):
@@ -162,18 +140,14 @@ class TestTagFor:
 
         fake = Settings(llm_api_key="")
         with patch("app.services.categorizer.get_settings", return_value=fake):
-            # Should not raise and should not call the network.
             assert await tag_for("STARBUCKS") is None
 
 
 class TestCache:
-    """Read-through / write-through behavior of the merchant cache."""
-
     @pytest.mark.asyncio
     async def test_cache_hit_skips_llm(self, settings):
         from app.services import categorizer
 
-        # Cache returns "food" upfront — the LLM must NOT be called.
         cache = _MockCache(hit="food")
         with patch.object(
             categorizer, "MerchantTagCacheRepository", return_value=cache
@@ -204,7 +178,6 @@ class TestCache:
                 result = await tag_for("CHOCFIN")
 
         assert result == "shopping"
-        # Upsert called with the normalized merchant key + tag.
         assert cache.upserts == [("chocfin", "shopping")]
 
     @pytest.mark.asyncio
@@ -219,8 +192,6 @@ class TestCache:
                 "app.services.categorizer.httpx.AsyncClient",
                 return_value=_MockClient(_mock_response("food")),
             ):
-                # Mixed-case + whitespace merchant. The cache key should
-                # be the lowercased trimmed form.
                 await tag_for("  Starbucks  ")
 
         assert cache.get_calls == ["starbucks"]
@@ -241,7 +212,6 @@ class TestCache:
                 result = await tag_for("MYSTERY")
 
         assert result is None
-        # No upsert when the LLM response is garbage.
         assert cache.upserts == []
 
     @pytest.mark.asyncio
@@ -256,8 +226,6 @@ class TestCache:
                 "app.services.categorizer.httpx.AsyncClient",
                 return_value=_MockClient(_mock_response("shopping")),
             ):
-                # Must NOT raise — the LLM response is still returned
-                # to the caller; only the cache write is dropped.
                 result = await tag_for("CHOCFIN")
 
         assert result == "shopping"
@@ -277,18 +245,6 @@ class TestCache:
 
 
 class TestPayload:
-    """Verify the request body shape sent to the LLM.
-
-    The tagger must:
-      - Cap max_tokens at 16 (so a single-word answer isn't truncated when
-        the model needs to emit a few more tokens for the prefix).
-      - Disable thinking via ``thinking: {type: "disabled"}`` — this is
-        the Anthropic-style schema; the legacy OpenRouter
-        ``reasoning: {enabled: false}`` is intentionally NOT used.
-      - Send temperature 0 for deterministic responses.
-      - Use the merchant string as the user message verbatim.
-    """
-
     @pytest.mark.asyncio
     async def test_payload_shape(self, settings, cache):
         mock_client = _MockClient(_mock_response("food"))
@@ -301,16 +257,13 @@ class TestPayload:
         assert payload["max_tokens"] == 16
         assert payload["temperature"] == 0.0
         assert payload["thinking"] == {"type": "disabled"}
-        # The legacy OpenRouter field must NOT be sent.
         assert "reasoning" not in payload
 
-        # Messages: one system, one user.
         msgs = payload["messages"]
         assert len(msgs) == 2
         assert msgs[0]["role"] == "system"
         assert "food" in msgs[0]["content"]
         assert msgs[1]["role"] == "user"
-        # User message is just the merchant, no Markdown wrapper.
         assert msgs[1]["content"] == "STARBUCKS"
 
     @pytest.mark.asyncio

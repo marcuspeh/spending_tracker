@@ -37,6 +37,7 @@ class UOBCCParser(BankParser):
     _amount_re = [
         compile(r"(?:SGD|S\$|\$)\s*([\d,]+\.?\d*)"),
         compile(r"([\d,]+\.?\d*)\s*(?:SGD|S\$|\$)"),
+        compile(r"(?:SGD|S\$|\$)\s*(\.\d+)"),
     ]
 
     # Merchant: "from SHOPEE APPLEPAY" (refund) or "at BUS/MRT" / "at SHOPEE

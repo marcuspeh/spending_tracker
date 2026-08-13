@@ -39,7 +39,6 @@ class TestStripHtml:
         assert strip_html(html) == "Hello World"
 
     def test_handles_dbs_style_email(self):
-        """The realistic case from the poller — full DBS card alert HTML."""
         html = (
             "<!DOCTYPE html><html><head><style>body { margin: 0 }</style></head>"
             "<body><table><tr><td>Card Transaction Alert</td></tr>"
@@ -51,11 +50,9 @@ class TestStripHtml:
         assert "Card Transaction Alert" in result
         assert "SGD2.15" in result
         assert "APPLE.COM/BILL" in result
-        assert "margin" not in result  # CSS stripped
+        assert "margin" not in result
 
     def test_no_repr_crash_on_long_input(self):
-        """Sanity check that long inputs don't cause pathological backtracking."""
-        # 5KB of style tags — would ReDoS on a vulnerable regex
         html = "<style>" + "p { color: red; }" * 200 + "</style>" + "<p>x</p>"
         result = strip_html(html)
         assert "x" in result

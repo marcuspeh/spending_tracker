@@ -36,8 +36,6 @@ FIXTURES_DIR = Path(__file__).resolve().parents[1] / "fixtures" / "email_samples
 
 
 def _make_registry() -> ParserRegistry:
-    """Same parser order used by the running app (see
-    ``test_real_email_fixtures._make_registry`` for rationale)."""
     registry = ParserRegistry()
     registry.register(UOBCCParser())
     registry.register(UOBPayNowParser())
@@ -54,13 +52,8 @@ def registry() -> ParserRegistry:
     return _make_registry()
 
 
-# --- "should parse" cases ---------------------------------------------------
-
-
 @dataclass(frozen=True)
 class ParseCase:
-    """A single row of the parse table — mirrors Go's struct{}{...} slices."""
-
     name: str
     filename: str
     expected_amount: Decimal | None
@@ -69,7 +62,6 @@ class ParseCase:
     expected_merchant: str | None = None
 
 
-# `None` for amount/method/time means "don't assert this field".
 PARSE_CASES: list[ParseCase] = [
     ParseCase(
         name="dbs_cc_direct",
@@ -109,8 +101,6 @@ PARSE_CASES: list[ParseCase] = [
         expected_amount=Decimal("-0.50"),
         expected_method="DBS_PAYNOW_CREDIT",
         expected_time=datetime(2026, 7, 31, 0, 11, tzinfo=SGT),
-        # For credits the merchant regex returns the "To:" line, which is
-        # the receiving account description — informational only.
         expected_merchant="TOM TAN",
     ),
     ParseCase(
@@ -167,7 +157,7 @@ PARSE_CASES: list[ParseCase] = [
         expected_amount=Decimal("-2000.00"),
         expected_method="UOB_PAYNOW_CREDIT",
         expected_time=datetime(2025, 9, 15, 23, 21, tzinfo=SGT),
-        expected_merchant="UOB_PAYNOW",  # Body has no counterparty "to/from" — falls back to the parser name.
+        expected_merchant="UOB_PAYNOW",
     ),
 ]
 
@@ -182,8 +172,6 @@ def _make_parse_id(case: ParseCase) -> str:
     ids=_make_parse_id,
 )
 def test_parse_table_driven(registry, case: ParseCase):
-    """Walk every "should-parse" fixture once and assert the registry
-    claims it with the expected fields — Go-style table-driven test."""
     fixture_path = FIXTURES_DIR / case.filename
     assert fixture_path.exists(), f"Missing fixture: {fixture_path}"
 
@@ -210,9 +198,6 @@ def test_parse_table_driven(registry, case: ParseCase):
         )
 
 
-# --- "should not parse" cases ----------------------------------------------
-
-
 @dataclass(frozen=True)
 class RejectCase:
     name: str
@@ -231,8 +216,6 @@ REJECT_CASES: list[RejectCase] = [
 
 @pytest.mark.parametrize("case", REJECT_CASES, ids=lambda c: c.name)
 def test_reject_table_driven(registry, case: RejectCase):
-    """Walk every "should-not-parse" fixture once and assert no parser
-    claims it — Go-style table-driven test."""
     fixture_path = FIXTURES_DIR / case.filename
     assert fixture_path.exists(), f"Missing fixture: {fixture_path}"
 
@@ -244,11 +227,6 @@ def test_reject_table_driven(registry, case: RejectCase):
     )
 
 
-# --- "discover everything" cases --------------------------------------------
-
-
-# A callable that, given a fixture path, returns the test-case factory for it
-# (or None if the fixture isn't in any of the table entries above).
 def _make_should_parse_lookup() -> Callable[[Path], ParseCase | None]:
     by_filename = {c.filename: c for c in PARSE_CASES}
 
@@ -260,10 +238,6 @@ def _make_should_parse_lookup() -> Callable[[Path], ParseCase | None]:
 
 
 def test_every_positive_fixture_is_in_the_table():
-    """Sanity check: every `.txt` fixture under a parser folder (i.e. NOT
-    under ``parse_failure/``) must have a corresponding row in
-    ``PARSE_CASES``. Catches the case where someone adds a new fixture
-    but forgets to add the expected-output row."""
     parse_failures = FIXTURES_DIR / "parse_failure"
     discovered = sorted(
         str(p.relative_to(FIXTURES_DIR).as_posix())
@@ -279,8 +253,6 @@ def test_every_positive_fixture_is_in_the_table():
 
 
 def test_every_negative_fixture_is_in_the_table():
-    """Same as above for parse_failure/ — every fixture there must be in
-    ``REJECT_CASES``."""
     parse_failures = FIXTURES_DIR / "parse_failure"
     discovered = sorted(
         str(p.relative_to(FIXTURES_DIR).as_posix()) for p in parse_failures.glob("*.txt")

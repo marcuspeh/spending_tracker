@@ -70,9 +70,6 @@ def load_email(path: Path) -> dict:
             elif line.strip() == "" and subject:
                 state = "body"
         elif state == "body":
-            # Keep the forwarded-message wrapper so parsers see the full
-            # forwarded body (the bank subject/from/date plus the body),
-            # matching what imap_tools returns for real Gmail forwards.
             body_lines.append(line)
     return {
         "subject": subject,
@@ -86,12 +83,7 @@ def _make_registry() -> ParserRegistry:
     registry = ParserRegistry()
     registry.register(UOBCCParser())
     registry.register(UOBPayNowParser())
-    # UOBBankParser must come before UOBCC — both can match "UOB" traffic,
-    # but the funds-transfer body shape is the more specific signal.
     registry.register(UOBBankParser())
-    # DBSBankParser must come before DBSCC — both can match "POSB" traffic,
-    # but the bank-transfer body shape (`Funds Transfer to Other DBS/POSB
-    # account`, `via FAST`) is the more specific signal.
     registry.register(DBSBankParser())
     registry.register(DBSCCParser())
     registry.register(DBSPayNowParser())
@@ -103,8 +95,6 @@ def _make_registry() -> ParserRegistry:
 def registry() -> ParserRegistry:
     return _make_registry()
 
-
-# --- shouldParse fixtures: filename -> expected output --------------------
 
 PARSE_CASES = [
     pytest.param(
@@ -132,8 +122,6 @@ PARSE_CASES = [
         "dbs_paynow/iBanking Alerts.txt",
         Decimal("1.00"),
         "DBS_PAYNOW_DEBIT",
-        # Body: "Date & Time: 31 Jul 00:13 (SGT)" with year patched from the
-        # email's "Date: 2026-07-30 16:13:34+00:00" header → 2026-07-31.
         datetime(2026, 7, 31, 0, 13, tzinfo=SGT),
         id="dbs_paynow_debit",
     ),
@@ -148,7 +136,6 @@ PARSE_CASES = [
         "paylah/Transaction Alerts.txt",
         Decimal("2000.00"),
         "PAYLAH_DEBIT",
-        # Year patched from the email's "Date: 2026-07-16 ..." header.
         datetime(2026, 7, 16, 10, 35, tzinfo=SGT),
         id="paylah_debit",
     ),
@@ -163,7 +150,6 @@ PARSE_CASES = [
         "uob_bank/UOB Personal Internet Banking Notification Alerts.txt",
         Decimal("2500.00"),
         "UOB_BANK_TRANSFER_DEBIT",
-        # Body: "at 12:35PM SGT, 14 Mar 26" → 2026-03-14 12:35 SGT.
         datetime(2026, 3, 14, 12, 35, tzinfo=SGT),
         id="uob_bank_transfer_debit",
     ),
@@ -192,7 +178,6 @@ PARSE_CASES = [
         "uob_paynow/UOB-PayNow transfer received.txt",
         Decimal("-2000.00"),
         "UOB_PAYNOW_CREDIT",
-        # Body: "on 15-SEP-2025 11:21PM" → 15-09-2025 23:21 SGT.
         datetime(2025, 9, 15, 23, 21, tzinfo=SGT),
         id="uob_paynow_credit",
     ),
@@ -224,8 +209,6 @@ def test_real_email_parses_correctly(
     )
 
 
-# --- shouldNotParse fixtures: parse_failure/* must be rejected ------------
-
 REJECT_CASES = sorted(
     str(p.relative_to(FIXTURES_DIR)) for p in FIXTURES_DIR.glob("parse_failure/*.txt")
 )
@@ -233,8 +216,6 @@ REJECT_CASES = sorted(
 
 @pytest.mark.parametrize("filename", REJECT_CASES)
 def test_parse_failure_fixtures_are_rejected(registry, filename):
-    """Every fixture in `parse_failure/` must not be claimed by any parser
-    (card-locked notices, eDocument alerts, own-account transfers, etc.)."""
     fixture_path = FIXTURES_DIR / filename
     email = load_email(fixture_path)
 

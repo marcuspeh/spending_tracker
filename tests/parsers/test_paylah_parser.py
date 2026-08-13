@@ -13,8 +13,6 @@ class TestPayLahParser:
     def _make_email(self, subject: str = "", body: str = "", from_: str = "") -> dict:
         return {"subject": subject, "body": body, "from": from_}
 
-    # --- can_parse ---
-
     def test_can_parse_paylah(self):
         email = self._make_email(
             subject="Transaction Alerts",
@@ -24,7 +22,6 @@ class TestPayLahParser:
         assert self.parser.can_parse(email) is True
 
     def test_cannot_parse_dbs_paynow(self):
-        # Pure PayNow (no PayLah mention) is DBSPayNowParser's territory.
         email = self._make_email(
             subject="PayNow Payment",
             body="DBS PayNow payment",
@@ -33,16 +30,12 @@ class TestPayLahParser:
         assert self.parser.can_parse(email) is False
 
     def test_cannot_parse_paylah_funded_paynow(self):
-        # When body says "PayNow Transfer", DBSPayNowParser wins — PayLahParser
-        # must NOT also claim it.
         email = self._make_email(
             subject="Transaction Alerts",
             from_="paylah.alert@dbs.com",
             body="We refer to a PayNow Transfer dated 26 Jun.",
         )
         assert self.parser.can_parse(email) is False
-
-    # --- parse ---
 
     def test_parse_debit(self):
         email = self._make_email(
@@ -59,8 +52,6 @@ class TestPayLahParser:
         assert result.payment_method == "PAYLAH_DEBIT"
 
     def test_parse_amount_stays_positive_even_with_credit_keywords(self):
-        # PayLah does NOT send incoming emails — even with "received"/"credit"
-        # in body, the parser must NOT flip the sign or return a credit value.
         email = self._make_email(
             subject="PayLah! Transaction",
             from_="paylah.alert@dbs.com",
@@ -79,7 +70,6 @@ class TestPayLahParser:
             self.parser.parse(email)
 
     def test_parse_real_polled_email(self):
-        """Real DBS PayLah debit polled from Gmail (uid17)."""
         email = self._make_email(
             subject="Fwd: Transaction Alerts",
             from_="paylah.alert@dbs.com",

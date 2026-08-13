@@ -99,6 +99,5 @@ class TestParserRegistry:
         registry.register(parser2)
 
         email = self._make_email()
-        # The first parser that matches should be selected and its exception propagated
         with pytest.raises(ParserError):
             registry.parse(email)

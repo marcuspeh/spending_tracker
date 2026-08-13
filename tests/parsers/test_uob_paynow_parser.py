@@ -13,8 +13,6 @@ class TestUOBPayNowParser:
     def _make_email(self, subject: str = "", body: str = "", from_: str = "") -> dict:
         return {"subject": subject, "body": body, "from": from_}
 
-    # --- can_parse ---
-
     def test_can_parse_uob_paynow(self):
         email = self._make_email(
             subject="PayNow Payment Alert",
@@ -38,8 +36,6 @@ class TestUOBPayNowParser:
             from_="ibanking.alert@dbs.com",
         )
         assert self.parser.can_parse(email) is False
-
-    # --- parse ---
 
     def test_parse_debit(self):
         email = self._make_email(
@@ -72,7 +68,6 @@ class TestUOBPayNowParser:
             self.parser.parse(email)
 
     def test_parse_real_polled_email(self):
-        """Real UOB PayNow debit polled from Gmail (uid25)."""
         email = self._make_email(
             subject="Fwd: UOB Personal Internet Banking Notification Alerts",
             from_="hkmpeh@gmail.com",

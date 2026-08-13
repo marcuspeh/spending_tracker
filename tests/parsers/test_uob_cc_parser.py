@@ -13,8 +13,6 @@ class TestUOBCCParser:
     def _make_email(self, subject: str = "", body: str = "", from_: str = "") -> dict:
         return {"subject": subject, "body": body, "from": from_}
 
-    # --- can_parse ---
-
     def test_can_parse_uob_card_subject(self):
         email = self._make_email(
             subject="UOB Card Transaction Alert",
@@ -23,7 +21,6 @@ class TestUOBCCParser:
         assert self.parser.can_parse(email) is True
 
     def test_can_parse_uob_card_in_body(self):
-        # Forwarded email: "UOB - Transaction Alert" subject, "Card" only in body
         email = self._make_email(
             subject="UOB - Transaction Alert",
             body="Your UOB Card ending 5522 was used. Amount: SGD4.22",
@@ -46,8 +43,6 @@ class TestUOBCCParser:
         )
         assert self.parser.can_parse(email) is False
 
-    # --- parse ---
-
     def test_parse_purchase(self):
         email = self._make_email(
             subject="UOB Card Transaction Alert",
@@ -56,6 +51,16 @@ class TestUOBCCParser:
         result = self.parser.parse(email)
         assert result.amount == Decimal("45.20")
         assert result.payment_method == "UOB_CC"
+
+    def test_parse_less_than_1_dollar_purchase(self):
+        email = self._make_email(
+            subject="UOB Card Transaction Alert",
+            body="A transaction of SGD .20 was made with your UOB Card ending 1395 on 13/08/26 at ATLAS VENDING. If unauthorised, call 24/7 Fraud Hotline now",
+        )
+        result = self.parser.parse(email)
+        assert result.amount == Decimal(".20")
+        assert result.payment_method == "UOB_CC"
+
 
     def test_parse_refund(self):
         email = self._make_email(
@@ -83,7 +88,6 @@ class TestUOBCCParser:
         assert result.amount == Decimal("1234.56")
 
     def test_parse_real_polled_email(self):
-        """Real UOB card email polled from Gmail (uid16)."""
         email = self._make_email(
             subject="Fwd: UOB - Transaction Alert",
             from_="hkmpeh@gmail.com",

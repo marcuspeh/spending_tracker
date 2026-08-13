@@ -29,11 +29,6 @@ def _fake_txn(
     merchant: str = "STARBUCKS",
     tag: str | None = None,
 ) -> MagicMock:
-    # Use a plain MagicMock (not spec=Transaction) because spec=spec
-    # binds every name on the model — including ``tag`` — to a Mock
-    # attribute, which prevents us from setting it to None and produces
-    # ``TypeError: argument of type 'builtin_function_or_method' is not
-    # iterable`` in the formatter.
     txn = MagicMock()
     txn.amount = Decimal(amount)
     txn.merchant = merchant
@@ -59,18 +54,13 @@ class TestFormatTransactionNotification:
 
     def test_includes_tag_when_present(self):
         text = format_transaction_notification(_fake_txn(tag="food"))
-        # First letter is capitalized for display; the DB stores it lowercased.
         assert "Tag: Food" in text
 
     def test_shows_dash_when_tag_null(self):
-        # When the LLM is disabled or fails, the helper prints '-' so the
-        # user can see the tag field exists but is unfilled.
         text = format_transaction_notification(_fake_txn(tag=None))
         assert "Tag: -" in text
 
     def test_capitalizes_only_first_letter(self):
-        # Capitalize keeps the rest lowercase. "shopping" -> "Shopping",
-        # but "FOOD" -> "Food" (not "FOOD").
         text = format_transaction_notification(_fake_txn(tag="shopping"))
         assert "Tag: Shopping" in text
         text = format_transaction_notification(_fake_txn(tag="FOOD"))

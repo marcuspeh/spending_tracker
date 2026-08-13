@@ -25,7 +25,6 @@ class _FakeCache:
 
 @pytest.fixture
 def settings():
-    """Settings are required by the inner tag_for() call."""
     from app.config.settings import Settings
 
     fake = Settings(
@@ -48,7 +47,6 @@ def cache():
 
 @pytest.mark.asyncio
 async def test_returns_tag_when_in_set(settings, cache):
-    """Happy path: LLM returns a valid tag → returned as-is."""
     with patch.object(
         __import__("app.services.categorizer", fromlist=["tag_for"]),
         "tag_for",
@@ -72,9 +70,6 @@ async def test_falls_back_to_default_when_llm_returns_none(settings, cache):
 
 @pytest.mark.asyncio
 async def test_propagates_exception_from_tag_for(settings, cache):
-    """Exceptions from ``tag_for`` are NOT caught — they propagate so
-    the caller (email ingestion / add_transaction) can decide what to do
-    (currently they wrap the call in try/except)."""
     with patch.object(
         __import__("app.services.categorizer", fromlist=["tag_for"]),
         "tag_for",
@@ -86,8 +81,6 @@ async def test_propagates_exception_from_tag_for(settings, cache):
 
 @pytest.mark.asyncio
 async def test_does_not_cache_default_value(settings, cache):
-    """The fallback must NOT be persisted to the cache — only genuine
-    LLM answers get cached, so /edit can later overwrite the default."""
     with patch.object(
         __import__("app.services.categorizer", fromlist=["tag_for"]),
         "tag_for",
@@ -99,7 +92,6 @@ async def test_does_not_cache_default_value(settings, cache):
 
 @pytest.mark.asyncio
 async def test_rejects_invalid_default(settings, cache):
-    """If ``default`` is not in DEFAULT_TAGS, return None."""
     with patch.object(
         __import__("app.services.categorizer", fromlist=["tag_for"]),
         "tag_for",
@@ -110,7 +102,6 @@ async def test_rejects_invalid_default(settings, cache):
 
 
 def test_default_is_in_default_tags():
-    """The shipped default ``"other"`` must be a valid tag."""
     assert "other" in DEFAULT_TAGS
 
 
