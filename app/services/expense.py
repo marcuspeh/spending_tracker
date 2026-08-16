@@ -118,6 +118,20 @@ class ExpenseService:
             user_id, sgt_to_utc(start), sgt_to_utc(end)
         )
 
+    async def get_today_spending_by_tag(
+        self, user_id: int
+    ) -> tuple[dict[str, float], bool]:
+        """Per-tag breakdown for today.
+
+        Returns ``({tag: signed_sum}, has_untagged)``. Untagged rows
+        are excluded from the dict but the bool tells the caller to
+        surface a "use /tag to fill in missing rows" hint.
+        """
+        start, end = get_today_window()
+        return await self.transaction_repo.sum_amount_by_tag(
+            user_id, sgt_to_utc(start), sgt_to_utc(end)
+        )
+
     async def get_week_spending(self, user_id: int) -> float:
         """Get this week's total spending (signed, including refunds)."""
         start, end = get_week_window()
@@ -125,10 +139,28 @@ class ExpenseService:
             user_id, sgt_to_utc(start), sgt_to_utc(end)
         )
 
+    async def get_week_spending_by_tag(
+        self, user_id: int
+    ) -> tuple[dict[str, float], bool]:
+        """Per-tag breakdown for this week."""
+        start, end = get_week_window()
+        return await self.transaction_repo.sum_amount_by_tag(
+            user_id, sgt_to_utc(start), sgt_to_utc(end)
+        )
+
     async def get_month_spending(self, user_id: int) -> float:
         """Get this month's total spending (signed, including refunds)."""
         start, end = get_month_window()
         return await self.transaction_repo.sum_amount(
+            user_id, sgt_to_utc(start), sgt_to_utc(end)
+        )
+
+    async def get_month_spending_by_tag(
+        self, user_id: int
+    ) -> tuple[dict[str, float], bool]:
+        """Per-tag breakdown for this month."""
+        start, end = get_month_window()
+        return await self.transaction_repo.sum_amount_by_tag(
             user_id, sgt_to_utc(start), sgt_to_utc(end)
         )
 

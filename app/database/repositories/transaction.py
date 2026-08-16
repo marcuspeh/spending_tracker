@@ -113,6 +113,44 @@ class TransactionRepository:
         total = result[0] if result else 0
         return float(total) if total else 0.0
 
+    async def sum_amount_by_tag(
+        self,
+        user_id: int,
+        start: datetime,
+        end: datetime,
+    ) -> tuple[dict[str, float], bool]:
+        """Group signed amounts in [start, end] by ``tag``.
+
+        Returns ``({tag: signed_sum}, has_untagged)``. Rows with a NULL
+        tag are excluded from the dict but reported via ``has_untagged``
+        so the caller can mention them. Signed sums preserve the sign
+        (refunds come back negative).
+        """
+        rows = (
+            await self._base_filter(user_id)
+            .filter(
+                transaction_time__gte=start,
+                transaction_time__lte=end,
+                tag__not_isnull=True,
+            )
+            .annotate(total=Coalesce(Sum("amount"), 0))
+            .group_by("tag")
+            .values_list("tag", "total")
+        )
+        breakdown: dict[str, float] = {}
+        for tag, total in rows:
+            breakdown[tag] = float(total) if total else 0.0
+        has_untagged = await (
+            self._base_filter(user_id)
+            .filter(
+                transaction_time__gte=start,
+                transaction_time__lte=end,
+                tag__isnull=True,
+            )
+            .exists()
+        )
+        return breakdown, bool(has_untagged)
+
     async def search_transactions(
         self,
         user_id: int,

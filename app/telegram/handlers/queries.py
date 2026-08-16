@@ -5,6 +5,7 @@ from telegram.ext import ContextTypes
 
 from app.database.repositories.user import UserRepository
 from app.services.expense import ExpenseService
+from app.services.categorizer import DEFAULT_TAGS
 from app.telegram.auth import auth_handler
 from app.telegram.handlers._helpers import (
     format_amount,
@@ -31,6 +32,44 @@ def _parse_count(
         return min(int(args[0]), max_count)
     except ValueError:
         return default_count
+
+
+def _format_tag_breakdown(
+    breakdown: dict[str, float],
+    has_untagged: bool,
+    total: float,
+) -> str:
+    """Render a per-tag breakdown as a plain-text block.
+
+    ``breakdown`` maps ``tag -> signed_sum``. Tags are printed in
+    fixed-enum order so the output stays stable run-to-run, with any
+    unknown tags appended at the bottom (defensive — should never
+    happen given the strict ``/tag`` validation).
+    """
+    if not breakdown and not has_untagged:
+        return ""
+
+    lines = ["By tag:"]
+    seen: set[str] = set()
+    for tag in DEFAULT_TAGS:
+        if tag in breakdown:
+            amount = breakdown[tag]
+            sign = "+" if amount > 0 else "" if amount == 0 else "-"
+            tag_display = tag.capitalize()
+            lines.append(
+                f"  {tag_display:<14} {sign}{format_amount(abs(amount))}"
+            )
+            seen.add(tag)
+    leftover = sorted((t, a) for t, a in breakdown.items() if t not in seen)
+    for tag, amount in leftover:
+        sign = "+" if amount > 0 else "" if amount == 0 else "-"
+        lines.append(f"  {tag:<14} {sign}{format_amount(abs(amount))}")
+
+    if has_untagged:
+        lines.append("  (some rows have no tag — use /tag <idx> <value>)")
+
+    lines.append(f"  {'Total':<14} {format_amount(total)}")
+    return "\n".join(lines)
 
 
 async def latest_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -85,10 +124,14 @@ async def today_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
 
     expense_service = ExpenseService()
     total = await expense_service.get_today_spending(user.id)
+    breakdown, has_untagged = await expense_service.get_today_spending_by_tag(user.id)
 
     text = f"Today's spending: {format_amount(total)}"
     if total < 0:
         text += " (net credit)"
+    breakdown_text = _format_tag_breakdown(breakdown, has_untagged, total)
+    if breakdown_text:
+        text += "\n\n" + breakdown_text
     await update.message.reply_text(text)
 
 
@@ -107,10 +150,14 @@ async def week_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
 
     expense_service = ExpenseService()
     total = await expense_service.get_week_spending(user.id)
+    breakdown, has_untagged = await expense_service.get_week_spending_by_tag(user.id)
 
     text = f"This week's spending: {format_amount(total)}"
     if total < 0:
         text += " (net credit)"
+    breakdown_text = _format_tag_breakdown(breakdown, has_untagged, total)
+    if breakdown_text:
+        text += "\n\n" + breakdown_text
     await update.message.reply_text(text)
 
 
