@@ -33,6 +33,7 @@ logger = logging.getLogger(__name__)
 #: bucket.
 DEFAULT_TAGS: Final[tuple[str, ...]] = (
     "food",
+    "coffee",
     "transport",
     "groceries",
     "shopping",
@@ -42,6 +43,7 @@ DEFAULT_TAGS: Final[tuple[str, ...]] = (
     "travel",
     "transfers",
     "fees",
+    "gym",
     "refunds",
     "cash",
     "other",

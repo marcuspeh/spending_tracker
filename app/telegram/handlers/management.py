@@ -8,6 +8,7 @@ from telegram.ext import ContextTypes
 from app.database.enums import PaymentMethod
 from app.database.repositories.transaction import TransactionRepository
 from app.database.repositories.user import UserRepository
+from app.services.categorizer import DEFAULT_TAGS
 from app.services.expense import ExpenseService, InvalidEditValue
 from app.telegram.auth import auth_handler
 from app.telegram.handlers._helpers import (
@@ -277,10 +278,10 @@ async def tag_handler(
 ) -> None:
     """Handle /tag <index> <value...> command.
 
-    Sets the LLM-driven tag on the transaction. Use one of the
-    fixed tags (``food``, ``transport``, ``other``, …) or any
-    free-form label — both are accepted.
-    Pass a single ``-`` to clear the tag.
+    Sets the tag on the transaction. The value MUST be one of the
+    fixed tags from ``app.services.categorizer.DEFAULT_TAGS`` —
+    free-form labels are rejected. Pass a single ``-`` to clear the
+    tag.
     """
     if not await auth_handler(update, context):
         return
@@ -288,7 +289,7 @@ async def tag_handler(
     if len(args) < 2:
         await update.message.reply_text(
             "Usage: /tag <index> <value>\n"
-            "Common tags: food, transport, groceries, shopping, "
+            "Allowed values: food, transport, groceries, shopping, "
             "subscriptions, health, entertainment, travel, transfers, "
             "fees, refunds, cash, other.\n"
             "Use /tag <index> - to clear."
@@ -297,6 +298,12 @@ async def tag_handler(
     value = " ".join(args[1:])
     if value == "-":
         value = ""  # repo's _normalize_tag turns "" into None.
+    elif value not in DEFAULT_TAGS:
+        await update.message.reply_text(
+            f"Invalid tag: {value!r}.\n"
+            f"Allowed values: {', '.join(DEFAULT_TAGS)}."
+        )
+        return
     await _apply_field_edit(update, context, "tag", value)
 
 
