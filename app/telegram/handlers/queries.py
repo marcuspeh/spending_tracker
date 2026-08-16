@@ -162,7 +162,7 @@ async def week_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
 
 
 async def month_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """Handle /thismonth command."""
+    """Handle /month command."""
     if not await auth_handler(update, context):
         return
 
@@ -176,10 +176,14 @@ async def month_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
 
     expense_service = ExpenseService()
     total = await expense_service.get_month_spending(user.id)
+    breakdown, has_untagged = await expense_service.get_month_spending_by_tag(user.id)
 
     text = f"This month's spending: {format_amount(total)}"
     if total < 0:
         text += " (net credit)"
+    breakdown_text = _format_tag_breakdown(breakdown, has_untagged, total)
+    if breakdown_text:
+        text += "\n\n" + breakdown_text
     await update.message.reply_text(text)
 
 

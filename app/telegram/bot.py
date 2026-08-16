@@ -52,7 +52,7 @@ class TelegramBot:
 
         self._app.add_handler(CommandHandler("today", today_handler))
         self._app.add_handler(CommandHandler("week", week_handler))
-        self._app.add_handler(CommandHandler("thismonth", month_handler))
+        self._app.add_handler(CommandHandler("month", month_handler))
         self._app.add_handler(CommandHandler("range", range_handler))
         self._app.add_handler(CommandHandler("search", search_handler))
         self._app.add_handler(CommandHandler("add", add_handler))

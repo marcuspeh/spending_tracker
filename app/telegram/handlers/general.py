@@ -28,7 +28,7 @@ Viewing transactions:
 /latest [count] - Show latest transactions as a table (default: 10, max: 50)
 /today - Show today's spending total
 /week - Show this week's spending total
-/thismonth - Show this month's spending total
+/month - Show this month's spending total
 /range <start> <end> - Show transactions in range (YYYY-MM-DD)
 /search <merchant> - Search transactions by merchant name
 
