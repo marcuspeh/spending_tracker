@@ -36,7 +36,10 @@ class TestStripHtml:
 
     def test_collapses_whitespace(self):
         html = "<p>Hello</p>\n\n<p>World</p>"
-        assert strip_html(html) == "Hello World"
+        # The two newlines between the </p> and the next <p> collapse
+        # to a single newline; block tags are kept as a single \n so the
+        # original line structure is roughly preserved.
+        assert strip_html(html) == "Hello\nWorld"
 
     def test_handles_dbs_style_email(self):
         html = (

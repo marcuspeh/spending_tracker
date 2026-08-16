@@ -1,8 +1,10 @@
 import structlog
+from typing import Awaitable, Callable
 
 from telegram import Update
 from telegram.ext import ContextTypes
 
+from app.database.models.user import User
 from app.database.repositories.user import UserRepository
 from app.services.expense import ExpenseService
 from app.services.categorizer import DEFAULT_TAGS
@@ -12,6 +14,7 @@ from app.telegram.handlers._helpers import (
     format_transaction,
     format_transactions,
     remember_recent,
+    render_tag_breakdown_table,
     render_transactions_table,
     send_rich_message,
 )
@@ -32,6 +35,36 @@ def _parse_count(
         return min(int(args[0]), max_count)
     except ValueError:
         return default_count
+
+
+async def _resolve_user(
+    update: Update, context: ContextTypes.DEFAULT_TYPE
+) -> User | None:
+    """Run auth + ``UserRepository`` lookup. Returns ``None`` on failure
+    (and replies to the user with the reason)."""
+    if not await auth_handler(update, context):
+        return None
+    user_repo = UserRepository()
+    user = await user_repo.get_by_chat_id(update.effective_chat.id)
+    if not user:
+        await update.message.reply_text("User not found.")
+        return None
+    return user
+
+
+async def _send_with_fallback(
+    context: ContextTypes.DEFAULT_TYPE,
+    chat_id: int,
+    html: str,
+    fallback_text: str,
+) -> None:
+    """Send ``html`` as a Rich Message, falling back to ``fallback_text``
+    on failure (older API / network glitch)."""
+    try:
+        await send_rich_message(context.bot, chat_id, html)
+    except Exception as e:
+        logger.warning("rich_message_send_failed", error=str(e))
+        await context.bot.send_message(chat_id=chat_id, text=fallback_text)
 
 
 def _format_tag_breakdown(
@@ -72,126 +105,102 @@ def _format_tag_breakdown(
     return "\n".join(lines)
 
 
+def _plain_text_breakdown_message(
+    title: str, total: float, breakdown: dict[str, float], has_untagged: bool
+) -> str:
+    """Build the plain-text fallback for the spending-breakdown handlers."""
+    text = f"{title}: {format_amount(total)}"
+    if total < 0:
+        text += " (net credit)"
+    breakdown_text = _format_tag_breakdown(breakdown, has_untagged, total)
+    if breakdown_text:
+        text += "\n\n" + breakdown_text
+    return text
+
+
+def make_spending_breakdown_handler(
+    title: str,
+    fetch_total: Callable[[ExpenseService, int], Awaitable[float]],
+    fetch_breakdown: Callable[
+        [ExpenseService, int], Awaitable[tuple[dict[str, float], bool]]
+    ],
+) -> Callable[[Update, ContextTypes.DEFAULT_TYPE], Awaitable[None]]:
+    """Build a handler that shows a per-tag spending breakdown.
+
+    ``title`` is the headline shown above the table (e.g. "Today's
+    spending"). ``fetch_total`` and ``fetch_breakdown`` are the two
+    service methods used to pull the data — wired here so each handler
+    names its own time window (today / week / month) without duplicating
+    the render-and-send boilerplate.
+    """
+
+    async def handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+        user = await _resolve_user(update, context)
+        if not user:
+            return
+
+        expense_service = ExpenseService()
+        total = await fetch_total(expense_service, user.id)
+        breakdown, has_untagged = await fetch_breakdown(expense_service, user.id)
+
+        html = render_tag_breakdown_table(
+            breakdown, has_untagged, total, _title=title
+        )
+        await _send_with_fallback(
+            context,
+            update.effective_chat.id,
+            html,
+            _plain_text_breakdown_message(title, total, breakdown, has_untagged),
+        )
+
+    return handler
+
+
 async def latest_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Handle /latest [count] command.
 
-    Sends a Bot API 10.1 Rich Message with the transactions rendered as a
-    native ``<table>``. Falls back to a plain text message if the API
-    rejects the rich-message payload (e.g. on older clients / API).
+    Sends the transactions as a Rich Message table; falls back to plain
+    text on send failure.
     """
-    if not await auth_handler(update, context):
-        return
-
-    chat_id = update.effective_chat.id
-    count = _parse_count(context.args, default_count=10, max_count=50)
-
-    user_repo = UserRepository()
-    user = await user_repo.get_by_chat_id(chat_id)
+    user = await _resolve_user(update, context)
     if not user:
-        await update.message.reply_text("User not found.")
         return
 
+    count = _parse_count(context.args, default_count=10, max_count=50)
     expense_service = ExpenseService()
     transactions = await expense_service.get_latest_transactions(user.id, count)
 
+    chat_id = update.effective_chat.id
     remember_recent(chat_id, [t.id for t in transactions])
 
     title = "Latest transactions"
     html = render_transactions_table(transactions, _title=title)
-    try:
-        await send_rich_message(context.bot, chat_id, html)
-    except Exception as e:
-        # Fall back to plain text if Rich Messages aren't supported
-        # (older API version, network glitch, etc.).
-        logger.warning("rich_message_send_failed", error=str(e))
-        await update.message.reply_text(
-            format_transactions(transactions, title)
-        )
+    await _send_with_fallback(
+        context, chat_id, html, format_transactions(transactions, title)
+    )
 
 
-async def today_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """Handle /today command."""
-    if not await auth_handler(update, context):
-        return
+today_handler = make_spending_breakdown_handler(
+    "Today's spending",
+    ExpenseService.get_today_spending,
+    ExpenseService.get_today_spending_by_tag,
+)
 
-    chat_id = update.effective_chat.id
+week_handler = make_spending_breakdown_handler(
+    "This week's spending",
+    ExpenseService.get_week_spending,
+    ExpenseService.get_week_spending_by_tag,
+)
 
-    user_repo = UserRepository()
-    user = await user_repo.get_by_chat_id(chat_id)
-    if not user:
-        await update.message.reply_text("User not found.")
-        return
-
-    expense_service = ExpenseService()
-    total = await expense_service.get_today_spending(user.id)
-    breakdown, has_untagged = await expense_service.get_today_spending_by_tag(user.id)
-
-    text = f"Today's spending: {format_amount(total)}"
-    if total < 0:
-        text += " (net credit)"
-    breakdown_text = _format_tag_breakdown(breakdown, has_untagged, total)
-    if breakdown_text:
-        text += "\n\n" + breakdown_text
-    await update.message.reply_text(text)
-
-
-async def week_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """Handle /week command."""
-    if not await auth_handler(update, context):
-        return
-
-    chat_id = update.effective_chat.id
-
-    user_repo = UserRepository()
-    user = await user_repo.get_by_chat_id(chat_id)
-    if not user:
-        await update.message.reply_text("User not found.")
-        return
-
-    expense_service = ExpenseService()
-    total = await expense_service.get_week_spending(user.id)
-    breakdown, has_untagged = await expense_service.get_week_spending_by_tag(user.id)
-
-    text = f"This week's spending: {format_amount(total)}"
-    if total < 0:
-        text += " (net credit)"
-    breakdown_text = _format_tag_breakdown(breakdown, has_untagged, total)
-    if breakdown_text:
-        text += "\n\n" + breakdown_text
-    await update.message.reply_text(text)
-
-
-async def month_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """Handle /month command."""
-    if not await auth_handler(update, context):
-        return
-
-    chat_id = update.effective_chat.id
-
-    user_repo = UserRepository()
-    user = await user_repo.get_by_chat_id(chat_id)
-    if not user:
-        await update.message.reply_text("User not found.")
-        return
-
-    expense_service = ExpenseService()
-    total = await expense_service.get_month_spending(user.id)
-    breakdown, has_untagged = await expense_service.get_month_spending_by_tag(user.id)
-
-    text = f"This month's spending: {format_amount(total)}"
-    if total < 0:
-        text += " (net credit)"
-    breakdown_text = _format_tag_breakdown(breakdown, has_untagged, total)
-    if breakdown_text:
-        text += "\n\n" + breakdown_text
-    await update.message.reply_text(text)
+month_handler = make_spending_breakdown_handler(
+    "This month's spending",
+    ExpenseService.get_month_spending,
+    ExpenseService.get_month_spending_by_tag,
+)
 
 
 async def range_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Handle /range <start> <end> command."""
-    if not await auth_handler(update, context):
-        return
-
     args = context.args
     if len(args) < 2:
         await update.message.reply_text(
@@ -200,9 +209,7 @@ async def range_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
         )
         return
 
-    chat_id = update.effective_chat.id
     start_str, end_str = args[0], args[1]
-
     try:
         start_date = parse_date(start_str)
         end_date = parse_date(end_str)
@@ -210,10 +217,8 @@ async def range_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
         await update.message.reply_text("Invalid date format. Use YYYY-MM-DD.")
         return
 
-    user_repo = UserRepository()
-    user = await user_repo.get_by_chat_id(chat_id)
+    user = await _resolve_user(update, context)
     if not user:
-        await update.message.reply_text("User not found.")
         return
 
     expense_service = ExpenseService()
@@ -221,67 +226,55 @@ async def range_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
         user.id, start_date, end_date
     )
 
+    chat_id = update.effective_chat.id
     title = f"Transactions from {start_str} to {end_str}"
     # Always remember the index before sending so /delete and /edit
     # work off the same numbering the user sees in the table.
     remember_recent(chat_id, [t.id for t in transactions])
 
+    fallback_text = f"{title}:\n\n"
+    if transactions:
+        fallback_text += "\n".join(
+            format_transaction(txn, i) for i, txn in enumerate(transactions, 1)
+        )
+    else:
+        fallback_text += "No transactions found."
+    fallback_text += f"\n\nTotal: {total_count}"
+    if is_truncated:
+        fallback_text += " (showing first 200, results truncated)"
+
     html = render_transactions_table(transactions, _title=title)
-    try:
-        await send_rich_message(context.bot, chat_id, html)
-    except Exception as e:
-        logger.warning("rich_message_send_failed", error=str(e))
-        # Fall back to plain text.
-        text = f"{title}:\n\n"
-        if transactions:
-            text += "\n".join(
-                format_transaction(txn, i) for i, txn in enumerate(transactions, 1)
-            )
-        else:
-            text += "No transactions found."
-        text += f"\n\nTotal: {total_count}"
-        if is_truncated:
-            text += " (showing first 200, results truncated)"
-        await update.message.reply_text(text)
-        return
+    await _send_with_fallback(context, chat_id, html, fallback_text)
 
     # On the rich-message path we can't include a footer text, so if
     # there were truncated results we send a follow-up note.
     if is_truncated:
-        await update.message.reply_text(
-            f"Total: {total_count} (showing first 200, results truncated)"
+        await context.bot.send_message(
+            chat_id=chat_id,
+            text=f"Total: {total_count} (showing first 200, results truncated)",
         )
 
 
 async def search_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Handle /search <merchant> command."""
-    if not await auth_handler(update, context):
-        return
-
     args = context.args
     if not args:
         await update.message.reply_text("Usage: /search <merchant>")
         return
 
-    chat_id = update.effective_chat.id
-    merchant = " ".join(args)
-
-    user_repo = UserRepository()
-    user = await user_repo.get_by_chat_id(chat_id)
+    user = await _resolve_user(update, context)
     if not user:
-        await update.message.reply_text("User not found.")
         return
 
+    merchant = " ".join(args)
     expense_service = ExpenseService()
     transactions = await expense_service.search_transactions(user.id, merchant)
 
+    chat_id = update.effective_chat.id
     title = f'Search results for "{merchant}"'
     remember_recent(chat_id, [t.id for t in transactions])
 
     html = render_transactions_table(transactions, _title=title)
-    try:
-        await send_rich_message(context.bot, chat_id, html)
-    except Exception as e:
-        logger.warning("rich_message_send_failed", error=str(e))
-        # Fall back to plain text.
-        await update.message.reply_text(format_transactions(transactions, title))
+    await _send_with_fallback(
+        context, chat_id, html, format_transactions(transactions, title)
+    )

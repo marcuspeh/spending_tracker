@@ -2,6 +2,7 @@ from typing import Any
 
 from telegram import Bot
 
+from app.services.categorizer import DEFAULT_TAGS
 from app.services.merchant_normalizer import normalize_merchant
 from app.utils.timezone import utc_to_sgt
 
@@ -154,6 +155,80 @@ def render_transactions_table(transactions: list, _title: str = "Transactions") 
 
     return (
         f"<h2>{_escape_html(_title)}</h2>"
+        "<table is_bordered=\"true\" is_striped=\"true\">"
+        "<thead>" + head_row + "</thead>"
+        "<tbody>" + "".join(body_rows) + "</tbody>"
+        "</table>"
+    )
+
+
+def render_tag_breakdown_table(
+    breakdown: dict[str, float],
+    has_untagged: bool,
+    total: float,
+    _title: str,
+) -> str:
+    """Render a per-tag breakdown as a Telegram Rich Message table.
+
+    Mirrors the styling of :func:`render_transactions_table` so the two
+    outputs feel consistent. Tags are emitted in the fixed
+    ``DEFAULT_TAGS`` order with any unknown tags appended at the bottom
+    (defensive — should never happen given the strict ``/tag``
+    validation). The Total row is always last.
+    """
+    if not breakdown and not has_untagged:
+        return ""
+
+    def cell(text: str, *, header: bool = False) -> str:
+        tag = "th" if header else "td"
+        return f"<{tag}>{_escape_html(text)}</{tag}>"
+
+    headers = ["TAG", "AMOUNT"]
+    head_row = "<tr>" + "".join(cell(h, header=True) for h in headers) + "</tr>"
+
+    body_rows: list[str] = []
+    seen: set[str] = set()
+    for tag in DEFAULT_TAGS:
+        if tag not in breakdown:
+            continue
+        amount = breakdown[tag]
+        sign = "+" if amount > 0 else "" if amount == 0 else "-"
+        body_rows.append(
+            "<tr>"
+            + cell(tag.capitalize())
+            + cell(f"{sign}{format_amount(abs(amount))}")
+            + "</tr>"
+        )
+        seen.add(tag)
+    for tag in sorted(breakdown):
+        if tag in seen:
+            continue
+        amount = breakdown[tag]
+        sign = "+" if amount > 0 else "" if amount == 0 else "-"
+        body_rows.append(
+            "<tr>"
+            + cell(tag.capitalize())
+            + cell(f"{sign}{format_amount(abs(amount))}")
+            + "</tr>"
+        )
+
+    if has_untagged:
+        body_rows.append(
+            "<tr>"
+            + cell("(some rows have no tag — use /tag <idx> <value>)")
+            + cell("")
+            + "</tr>"
+        )
+
+    body_rows.append(
+        "<tr>"
+        + cell("Total", header=True)
+        + cell(format_amount(total), header=True)
+        + "</tr>"
+    )
+
+    return (
+        f"<h3>{_escape_html(_title)}</h3>"
         "<table is_bordered=\"true\" is_striped=\"true\">"
         "<thead>" + head_row + "</thead>"
         "<tbody>" + "".join(body_rows) + "</tbody>"
