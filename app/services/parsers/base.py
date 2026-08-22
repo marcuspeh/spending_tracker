@@ -221,6 +221,7 @@ class BankParser(BaseParser):
         "Your Funds Transfer to own account",
         "cancelled",
         "Funds Transfer Limit",
+        "bill payment",
     )
 
     # ---------- helpers subclasses can reuse ----------

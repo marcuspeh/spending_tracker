@@ -43,6 +43,24 @@ class TestUOBCCParser:
         )
         assert self.parser.can_parse(email) is False
 
+    def test_cannot_parse_uob_bill_payment(self):
+        # Bill-payment notifications mention "UOB", "Cards", and an SGD
+        # amount — superficially card-shaped, but they're actually
+        # bank-to-card transfers the UOB bank parser doesn't claim.
+        # Without this guard the parser was producing garbage rows
+        # (merchant pulled from the disclaimer footer, time fallback
+        # to now()).
+        email = self._make_email(
+            subject="UOB - Bill Payment Notification",
+            body=(
+                "You made/scheduled a bill payment(s) of SGD 432.62 to "
+                "UOB Cards on your a/c ending 8404 at 8:56AM SGT, 20 Aug 26. "
+                "Bill ref: ending 1395."
+            ),
+            from_="unialerts@uobgroup.com",
+        )
+        assert self.parser.can_parse(email) is False
+
     def test_parse_purchase(self):
         email = self._make_email(
             subject="UOB Card Transaction Alert",
