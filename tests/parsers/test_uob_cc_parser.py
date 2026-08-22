@@ -97,6 +97,42 @@ class TestUOBCCParser:
         with pytest.raises(ParserError):
             self.parser.parse(email)
 
+    def test_parse_purchase_with_asterisk_merchant(self):
+        # Card networks add a `*` to merchant names (e.g. "TAMJAI SAM*").
+        # The capture class must include `*` so these merchants aren't
+        # silently dropped to the parser-name fallback.
+        email = self._make_email(
+            subject="UOB - Transaction Alert",
+            body=(
+                "A transaction of SGD 32.61 was made with your UOB Card "
+                "ending 1395 on 21/08/26 at TAMJAI SAM* TAMJAI MIX. "
+                "If unauthorised, call 24/7 Fraud Hotline now"
+            ),
+        )
+        result = self.parser.parse(email)
+        assert result.amount == Decimal("32.61")
+        assert result.merchant == "TAMJAI SAM* TAMJAI MIX"
+        assert result.payment_method == "UOB_CC"
+
+    def test_merchant_is_not_pulled_from_disclaimer_footer(self):
+        # The UOB standard disclaimer contains "from your computer
+        # system" in lowercase. If the regex runs under IGNORECASE the
+        # captured merchant silently becomes that footer fragment.
+        email = self._make_email(
+            subject="UOB - Transaction Alert",
+            body=(
+                "A transaction of SGD 32.61 was made with your UOB Card "
+                "ending 1395 on 21/08/26 at TAMJAI SAM* TAMJAI MIX. If "
+                "unauthorised, call 24/7 Fraud Hotline now \n UOB EMAIL "
+                "DISCLAIMER: If you are not the intended recipient, "
+                "please delete all copies of this email from your "
+                "computer system."
+            ),
+        )
+        result = self.parser.parse(email)
+        assert "computer system" not in result.merchant.lower()
+        assert result.merchant == "TAMJAI SAM* TAMJAI MIX"
+
     def test_parse_with_comma_separated_amount(self):
         email = self._make_email(
             subject="UOB Card",

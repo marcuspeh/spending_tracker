@@ -1,4 +1,4 @@
-from re import IGNORECASE, compile
+from re import compile
 from typing import Any
 
 from app.services.parsers.base import BankParser
@@ -41,11 +41,12 @@ class UOBCCParser(BankParser):
     ]
 
     # Merchant: "from SHOPEE APPLEPAY" (refund) or "at BUS/MRT" / "at SHOPEE
-    # SG MP" (purchase). Capture what follows "at" / "from" up to the next
-    # verb / preposition / digit marker that ends the merchant name.
+    # SG MP" / "at TAMJAI SAM* TAMJAI MIX" (purchase). Keyword is
+    # case-insensitive; capture is case-sensitive so the lowercase
+    # "from your computer system" in UOB's disclaimer footer doesn't
+    # sneak in. `*` is in the class for card-network suffixes.
     _merchant_re = compile(
-        r"\b(?:at|from)\s+([A-Z][A-Z0-9][A-Z0-9\s&.'/\-]*?)(?=\s+(?:has|is|on|at|to|with|in|by|for|the|a|an)\s|\s+\d|\.|,|$)",
-        IGNORECASE,
+        r"\b(?i:at|from)\s+([A-Z][A-Z0-9][A-Z0-9\s&.'*/\-]*?)(?=\s+(?:has|is|on|at|to|with|in|by|for|the|a|an)\s|\s+\d|\.|,|$)",
     )
 
     # Dates: "on 16/07/26", "on 06 Jul 2026", "on 29 Jul 26, 10:55PM" or
