@@ -24,3 +24,4 @@ class ImportStatus(str, enum.Enum):
     SUCCESS = "SUCCESS"
     FAILED = "FAILED"
     SKIPPED = "SKIPPED"
+    BLACKLISTED = "BLACKLISTED"

@@ -225,6 +225,129 @@ class TestProcessEmailNoParser:
         )
 
 
+class TestProcessEmailBlacklist:
+    """Merchants in the hardcoded blacklist are skipped after parsing —
+    no transaction is inserted and no notification is sent."""
+
+    # The merchant string the PayLah parser extracts from the
+    # ChocFin → Chocolate Clients transfer email. Blacklisted because
+    # those are internal savings transfers, not real spending.
+    _BLACKLISTED_MERCHANT = "CHOCFIN PTE. LTD. - CHOCOLATE CLIENTS AC"
+
+    @pytest.mark.asyncio
+    async def test_blacklisted_merchant_marks_blacklisted(self):
+        # Parser succeeds and returns a merchant in the blacklist. The
+        # service should record BLACKLISTED and never touch the
+        # transaction repo.
+        service, mocks = _make_service(
+            user_email=FakeUserEmail(),
+            parsed=ParsedTransaction(
+                amount=Decimal("3.98"),
+                merchant=self._BLACKLISTED_MERCHANT,
+                payment_method="DBS_CC",
+                transaction_time=datetime(2026, 7, 16, 12, 39),
+                description=None,
+            ),
+        )
+        status = await service.process_email(_email())
+        assert status == ImportStatus.BLACKLISTED
+        mocks["imported"].insert.assert_awaited_with(
+            "<abc@example.com>", ImportStatus.BLACKLISTED, "BLACKLISTED"
+        )
+        mocks["transaction"].insert.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_blacklist_match_is_case_insensitive_and_trims_whitespace(self):
+        # Real parsers can vary in casing/formatting; the blacklist
+        # must still hit when the merchant is uppercase or padded.
+        service, mocks = _make_service(
+            user_email=FakeUserEmail(),
+            parsed=ParsedTransaction(
+                amount=Decimal("3.98"),
+                merchant="  CHOCFIN   PTE.   LTD.   -   CHOCOLATE   CLIENTS   AC  ",
+                payment_method="DBS_CC",
+                transaction_time=datetime(2026, 7, 16, 12, 39),
+                description=None,
+            ),
+        )
+        status = await service.process_email(_email())
+        assert status == ImportStatus.BLACKLISTED
+        mocks["transaction"].insert.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_non_blacklisted_merchant_proceeds_normally(self):
+        # Regression guard: the blacklist check must not interfere
+        # with non-blacklisted merchants. APPLE.COM/BILL is not in the
+        # blacklist.
+        service, mocks = _make_service(
+            user_email=FakeUserEmail(),
+            parsed=ParsedTransaction(
+                amount=Decimal("3.98"),
+                merchant="APPLE.COM/BILL",
+                payment_method="DBS_CC",
+                transaction_time=datetime(2026, 7, 16, 12, 39),
+                description=None,
+            ),
+        )
+        status = await service.process_email(_email())
+        assert status == ImportStatus.SUCCESS
+        mocks["transaction"].insert.assert_awaited_once()
+
+    @pytest.mark.asyncio
+    async def test_blacklist_check_runs_before_payment_method_check(self):
+        # A merchant in the blacklist should be BLACKLISTED rather than
+        # failing with UNKNOWN_PAYMENT_METHOD when both apply.
+        service, mocks = _make_service(
+            user_email=FakeUserEmail(),
+            parsed=ParsedTransaction(
+                amount=Decimal("3.98"),
+                merchant=self._BLACKLISTED_MERCHANT,
+                payment_method="NOT_A_METHOD",
+                transaction_time=datetime(2026, 7, 16, 12, 39),
+                description=None,
+            ),
+        )
+        status = await service.process_email(_email())
+        assert status == ImportStatus.BLACKLISTED
+        mocks["imported"].insert.assert_awaited_with(
+            "<abc@example.com>", ImportStatus.BLACKLISTED, "BLACKLISTED"
+        )
+
+    @pytest.mark.asyncio
+    async def test_blacklist_check_runs_before_user_email_check(self):
+        # Even when no user email is registered for the forwarder, a
+        # blacklisted merchant should record BLACKLISTED (the user
+        # would never have owned the transaction anyway).
+        service, mocks = _make_service(
+            user_email=None,
+            parsed=ParsedTransaction(
+                amount=Decimal("3.98"),
+                merchant=self._BLACKLISTED_MERCHANT,
+                payment_method="DBS_CC",
+                transaction_time=datetime(2026, 7, 16, 12, 39),
+                description=None,
+            ),
+        )
+        status = await service.process_email(_email())
+        assert status == ImportStatus.BLACKLISTED
+        mocks["imported"].insert.assert_awaited_with(
+            "<abc@example.com>", ImportStatus.BLACKLISTED, "BLACKLISTED"
+        )
+
+
+class TestProcessEmailBlacklistDedup:
+    @pytest.mark.asyncio
+    async def test_returns_blacklisted_when_existing_record_was_blacklist(self):
+        existing = MagicMock()
+        existing.status = ImportStatus.BLACKLISTED
+        existing.reason = "BLACKLISTED"
+        service, mocks = _make_service(existing_import=existing)
+        status = await service.process_email(_email())
+        assert status == ImportStatus.BLACKLISTED
+        mocks["transaction"].insert.assert_not_awaited()
+        mocks["imported"].insert.assert_not_awaited()
+
+
 class TestNotificationOnSuccess:
     @pytest.mark.asyncio
     async def test_notification_called_on_success(self):

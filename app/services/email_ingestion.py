@@ -5,6 +5,7 @@ from app.database.repositories.imported_email import ImportedEmailRepository
 from app.database.repositories.transaction import TransactionRepository
 from app.database.repositories.user_email import UserEmailRepository
 from app.services.categorizer import tag_for_or_default
+from app.services.merchant_blacklist import is_merchant_blacklisted
 from app.services.notification import NotificationService
 from app.services.parsers.base import ParserError
 from app.services.parsers.registry import ParserRegistry
@@ -43,6 +44,8 @@ class EmailIngestionService:
                 and existing.reason == "UNKNOWN_FORWARDER"
             ):
                 return ImportStatus.FAILED
+            if existing and existing.status == ImportStatus.BLACKLISTED:
+                return ImportStatus.BLACKLISTED
             return existing.status if existing else ImportStatus.SKIPPED
 
         parser = self.parser_registry.find_parser(email)
@@ -55,6 +58,12 @@ class EmailIngestionService:
         except ParserError:
             await self.imported_email_repo.insert(message_id, ImportStatus.FAILED, "PARSE_ERROR")
             return ImportStatus.FAILED
+
+        if is_merchant_blacklisted(parsed.merchant):
+            await self.imported_email_repo.insert(
+                message_id, ImportStatus.BLACKLISTED, "BLACKLISTED"
+            )
+            return ImportStatus.BLACKLISTED
 
         if parsed.payment_method not in PaymentMethod._value2member_map_:
             await self.imported_email_repo.insert(
