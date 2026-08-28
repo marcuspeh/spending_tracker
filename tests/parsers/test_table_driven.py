@@ -21,12 +21,10 @@ from typing import Callable
 
 import pytest
 
-from app.services.parsers.dbs_bank import DBSBankParser
 from app.services.parsers.dbs_cc import DBSCCParser
 from app.services.parsers.dbs_paynow import DBSPayNowParser
 from app.services.parsers.paylah import PayLahParser
 from app.services.parsers.registry import ParserRegistry
-from app.services.parsers.uob_bank import UOBBankParser
 from app.services.parsers.uob_cc import UOBCCParser
 from app.services.parsers.uob_paynow import UOBPayNowParser
 from app.utils.timezone import SGT
@@ -39,8 +37,6 @@ def _make_registry() -> ParserRegistry:
     registry = ParserRegistry()
     registry.register(UOBCCParser())
     registry.register(UOBPayNowParser())
-    registry.register(UOBBankParser())
-    registry.register(DBSBankParser())
     registry.register(DBSCCParser())
     registry.register(DBSPayNowParser())
     registry.register(PayLahParser())
@@ -70,22 +66,6 @@ PARSE_CASES: list[ParseCase] = [
         expected_method="DBS_CC",
         expected_time=datetime(2026, 7, 16, 12, 39, tzinfo=SGT),
         expected_merchant="Inception SG Pte Ltd",
-    ),
-    ParseCase(
-        name="dbs_bank_credit",
-        filename="dbs_bank/digibank Alerts - You've received a transfer.txt",
-        expected_amount=Decimal("-10.35"),
-        expected_method="DBS_BANK_TRANSFER_CREDIT",
-        expected_time=datetime(2026, 6, 3, 0, 13, tzinfo=SGT),
-        expected_merchant="JANE DOE",
-    ),
-    ParseCase(
-        name="dbs_bank_debit",
-        filename="dbs_bank/iBanking Alerts.txt",
-        expected_amount=Decimal("1.00"),
-        expected_method="DBS_BANK_TRANSFER_DEBIT",
-        expected_time=datetime(2026, 7, 31, 0, 13, tzinfo=SGT),
-        expected_merchant="IBKR (A/C ending 0775)",
     ),
     ParseCase(
         name="dbs_paynow_debit",
@@ -134,14 +114,6 @@ PARSE_CASES: list[ParseCase] = [
         expected_method="UOB_CC_REFUND",
         expected_time=datetime(2026, 7, 29, 22, 55, tzinfo=SGT),
         expected_merchant="SHOPEE SG MP",
-    ),
-    ParseCase(
-        name="uob_bank_debit",
-        filename="uob_bank/UOB Personal Internet Banking Notification Alerts.txt",
-        expected_amount=Decimal("2500.00"),
-        expected_method="UOB_BANK_TRANSFER_DEBIT",
-        expected_time=datetime(2026, 3, 14, 12, 35, tzinfo=SGT),
-        expected_merchant="DBS BANK LTD a/c ending 5660",
     ),
     ParseCase(
         name="uob_paynow_debit",

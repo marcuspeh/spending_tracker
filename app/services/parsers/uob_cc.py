@@ -41,12 +41,13 @@ class UOBCCParser(BankParser):
     ]
 
     # Merchant: "from SHOPEE APPLEPAY" (refund) or "at BUS/MRT" / "at SHOPEE
-    # SG MP" / "at TAMJAI SAM* TAMJAI MIX" (purchase). Keyword is
-    # case-insensitive; capture is case-sensitive so the lowercase
-    # "from your computer system" in UOB's disclaimer footer doesn't
-    # sneak in. `*` is in the class for card-network suffixes.
+    # SG MP" / "at TAMJAI SAM* TAMJAI MIX" / "at TikTok Shop Seller"
+    # (purchase). Keyword is case-insensitive; capture allows mixed case but
+    # the FIRST char must be uppercase so the lowercase "from your computer
+    # system" in UOB's disclaimer footer doesn't sneak in. `*` is in the
+    # class for card-network suffixes.
     _merchant_re = compile(
-        r"\b(?i:at|from)\s+([A-Z][A-Z0-9][A-Z0-9\s&.'*/\-]*?)(?=\s+(?:has|is|on|at|to|with|in|by|for|the|a|an)\s|\s+\d|\.|,|$)",
+        r"\b(?i:at|from)\s+([A-Z][A-Za-z0-9][A-Za-z0-9\s&.'*/\-]*?)(?=\s+(?:has|is|on|at|to|with|in|by|for|the|a|an)\s|\s+\d|\.|,|$)",
     )
 
     # Dates: "on 16/07/26", "on 06 Jul 2026", "on 29 Jul 26, 10:55PM" or

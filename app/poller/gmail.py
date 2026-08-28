@@ -36,10 +36,10 @@ class GmailPoller:
         self._running = False
         self._task: asyncio.Task | None = None
 
-        # Set up parser registry — one parser per channel. DBSPayNowParser is
-        # registered before PayLahParser so PayNow wins when both signals appear
-        # (some PayLah-funded transfers come from PayLah! Alerts but say
-        # "PayNow Transfer" in the body).
+        # Set up parser registry — one parser per channel. DBSPayNowParser
+        # is registered before PayLahParser so PayNow wins when both
+        # signals appear (some PayLah-funded transfers come from PayLah!
+        # Alerts but say "PayNow Transfer" in the body).
         self.parser_registry = ParserRegistry()
         self.parser_registry.register(UOBCCParser())
         self.parser_registry.register(UOBPayNowParser())

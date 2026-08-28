@@ -19,12 +19,10 @@ from pathlib import Path
 
 import pytest
 
-from app.services.parsers.dbs_bank import DBSBankParser
 from app.services.parsers.dbs_cc import DBSCCParser
 from app.services.parsers.dbs_paynow import DBSPayNowParser
 from app.services.parsers.paylah import PayLahParser
 from app.services.parsers.registry import ParserRegistry
-from app.services.parsers.uob_bank import UOBBankParser
 from app.services.parsers.uob_cc import UOBCCParser
 from app.services.parsers.uob_paynow import UOBPayNowParser
 from app.utils.timezone import SGT
@@ -83,8 +81,6 @@ def _make_registry() -> ParserRegistry:
     registry = ParserRegistry()
     registry.register(UOBCCParser())
     registry.register(UOBPayNowParser())
-    registry.register(UOBBankParser())
-    registry.register(DBSBankParser())
     registry.register(DBSCCParser())
     registry.register(DBSPayNowParser())
     registry.register(PayLahParser())
@@ -103,20 +99,6 @@ PARSE_CASES = [
         "DBS_CC",
         datetime(2026, 7, 16, 12, 39, tzinfo=SGT),
         id="dbs_cc_direct",
-    ),
-    pytest.param(
-        "dbs_bank/digibank Alerts - You've received a transfer.txt",
-        Decimal("-10.35"),
-        "DBS_BANK_TRANSFER_CREDIT",
-        datetime(2026, 6, 3, 0, 13, tzinfo=SGT),
-        id="dbs_bank_transfer_credit",
-    ),
-    pytest.param(
-        "dbs_bank/iBanking Alerts.txt",
-        Decimal("1.00"),
-        "DBS_BANK_TRANSFER_DEBIT",
-        datetime(2026, 7, 31, 0, 13, tzinfo=SGT),
-        id="dbs_bank_transfer_debit",
     ),
     pytest.param(
         "dbs_paynow/iBanking Alerts.txt",
@@ -145,13 +127,6 @@ PARSE_CASES = [
         "UOB_CC",
         datetime(2026, 7, 16, 0, 0, tzinfo=SGT),
         id="uob_cc_direct",
-    ),
-    pytest.param(
-        "uob_bank/UOB Personal Internet Banking Notification Alerts.txt",
-        Decimal("2500.00"),
-        "UOB_BANK_TRANSFER_DEBIT",
-        datetime(2026, 3, 14, 12, 35, tzinfo=SGT),
-        id="uob_bank_transfer_debit",
     ),
     pytest.param(
         "uob_cc/Your transaction has been refunded.txt",

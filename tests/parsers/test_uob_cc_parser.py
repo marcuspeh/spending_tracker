@@ -114,6 +114,24 @@ class TestUOBCCParser:
         assert result.merchant == "TAMJAI SAM* TAMJAI MIX"
         assert result.payment_method == "UOB_CC"
 
+    def test_parse_purchase_with_mixed_case_merchant(self):
+        # Merchants like "TikTok Shop Seller" are mixed case. The capture
+        # class must allow lowercase letters after the leading uppercase
+        # so they aren't silently dropped to the parser-name fallback
+        # ("UOB_CC").
+        email = self._make_email(
+            subject="UOB - Transaction Alert",
+            body=(
+                "A transaction of SGD 12.30 was made with your UOB Card "
+                "ending 5522 on 26/08/26 at TikTok Shop Seller. If "
+                "unauthorised, call 24/7 Fraud Hotline now"
+            ),
+        )
+        result = self.parser.parse(email)
+        assert result.amount == Decimal("12.30")
+        assert result.merchant == "TikTok Shop Seller"
+        assert result.payment_method == "UOB_CC"
+
     def test_merchant_is_not_pulled_from_disclaimer_footer(self):
         # The UOB standard disclaimer contains "from your computer
         # system" in lowercase. If the regex runs under IGNORECASE the
