@@ -8,7 +8,7 @@ from telegram.ext import ContextTypes
 from app.database.enums import PaymentMethod
 from app.database.repositories.transaction import TransactionRepository
 from app.database.repositories.user import UserRepository
-from app.services.categorizer import DEFAULT_TAGS
+from app.services.categorizer import current_tags
 from app.services.expense import ExpenseService, InvalidEditValue
 from app.telegram.auth import auth_handler
 from app.telegram.handlers._helpers import (
@@ -279,31 +279,32 @@ async def tag_handler(
     """Handle /tag <index> <value...> command.
 
     Sets the tag on the transaction. The value MUST be one of the
-    fixed tags from ``app.services.categorizer.DEFAULT_TAGS`` —
-    free-form labels are rejected. Pass a single ``-`` to clear the
-    tag.
+    currently allowed tags (fetched live from config_store via
+    :func:`app.services.categorizer.current_tags`) — free-form labels
+    are rejected. Pass a single ``-`` to clear the tag.
     """
     if not await auth_handler(update, context):
         return
     args = context.args
     if len(args) < 2:
+        allowed = current_tags()
         await update.message.reply_text(
             "Usage: /tag <index> <value>\n"
-            "Allowed values: food, transport, groceries, shopping, "
-            "subscriptions, health, entertainment, travel, transfers, "
-            "fees, refunds, cash, other.\n"
+            f"Allowed values: {', '.join(allowed)}.\n"
             "Use /tag <index> - to clear."
         )
         return
     value = " ".join(args[1:])
     if value == "-":
         value = ""  # repo's _normalize_tag turns "" into None.
-    elif value not in DEFAULT_TAGS:
-        await update.message.reply_text(
-            f"Invalid tag: {value!r}.\n"
-            f"Allowed values: {', '.join(DEFAULT_TAGS)}."
-        )
-        return
+    else:
+        allowed = current_tags()
+        if value not in allowed:
+            await update.message.reply_text(
+                f"Invalid tag: {value!r}.\n"
+                f"Allowed values: {', '.join(allowed)}."
+            )
+            return
     await _apply_field_edit(update, context, "tag", value)
 
 

@@ -7,8 +7,13 @@ ENV TZ=Asia/Singapore
 # happen instead of buffering them until the process exits.
 ENV PYTHONUNBUFFERED=1
 
-# Install uv
-RUN pip install uv
+# Install uv and git (uv needs git to fetch the config_store_sdk
+# dependency sourced from a Git repo; the python:3.12-slim base image
+# doesn't ship with it).
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends git \
+    && rm -rf /var/lib/apt/lists/* \
+    && pip install uv
 
 WORKDIR /app
 

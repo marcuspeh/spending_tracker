@@ -20,7 +20,15 @@ dependencies = [
     "httpx>=0.27.0",
     "aiohttp>=3.9.0",
     "cryptography>=42.0.0",
+    # Python SDK for the sibling config_store service
+    # (see app/services/tags_provider.py). Installed from GitHub at
+    # image-build time so the Docker build context only needs this
+    # repo's sources, not a sibling checkout on the host.
+    "config_store_sdk",
 ]
+
+[tool.uv.sources]
+config_store_sdk = { git = "https://github.com/marcuspeh/config_store.git", subdirectory = "sdk/python" }
 
 [project.optional-dependencies]
 dev = [

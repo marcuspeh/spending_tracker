@@ -47,11 +47,20 @@ class Settings(BaseSettings):
     # Settings are optional — if absent the tagger is a no-op and
     # `tag` falls back to "other" on insert. The merchant is the only
     # input sent to the model; the prompt constrains the output to
-    # one of the fixed tags defined in
-    # app.services.categorizer.DEFAULT_TAGS.
+    # one of the allowed tags fetched from config_store at runtime
+    # (see app.services.tags_provider.TagsProvider).
     llm_base_url: str = Field(default="https://api.openrouter.ai/api/v1")
     llm_api_key: str = Field(default="")
     llm_model: str = Field(default="minimax/minimax-m2.7")
+
+    # Config store (sibling service that owns shared configuration).
+    # The watcher in TagsProvider polls this URL for the allowed tag
+    # list (project=expense_tracker, key=tags). When unreachable the
+    # hard-coded FALLBACK_TAGS in categorizer.py is used instead.
+    config_store_url: str = Field(default="http://localhost:6002")
+    config_store_project: str = Field(default="expense_tracker")
+    config_store_tags_key: str = Field(default="tags")
+    config_store_poll_seconds: float = Field(default=60.0)
 
     @property
     def database_url(self) -> str:

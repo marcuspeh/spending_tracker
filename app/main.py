@@ -7,6 +7,10 @@ from app.config.settings import get_settings
 from app.database.session import close_db, init_db
 from app.health.server import start_health_server, stop_health_server
 from app.poller.gmail import GmailPoller
+from app.services.tags_provider import (
+    init_tags_provider,
+    reset_tags_provider,
+)
 from app.telegram.bot import TelegramBot
 
 structlog.configure(
@@ -36,6 +40,13 @@ async def main():
     logger.info("app_starting", timezone=settings.timezone)
 
     await init_db()
+
+    # Live tag set owned by config_store. Outages are non-fatal — the
+    # provider falls back to the hard-coded list and self-heals once
+    # config_store becomes reachable again.
+    tags_provider = init_tags_provider()
+    await tags_provider.start()
+
     bot = TelegramBot()
     poller = GmailPoller(telegram_bot=bot)
 
@@ -60,6 +71,8 @@ async def main():
     await bot.stop()
     await asyncio.gather(poller_task, bot_task, return_exceptions=True)
     await stop_health_server(health_runner)
+    await tags_provider.stop()
+    reset_tags_provider()
     await close_db()
 
     logger.info("app_stopped")

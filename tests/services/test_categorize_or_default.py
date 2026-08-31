@@ -7,8 +7,13 @@ import pytest
 from app.services.categorizer import (
     DEFAULT_FALLBACK_TAG,
     DEFAULT_TAGS,
-    tag_for,
+    current_tags,
     tag_for_or_default,
+)
+from app.services.tags_provider import (
+    FALLBACK_TAGS,
+    TagsProvider,
+    reset_tags_provider,
 )
 
 
@@ -107,3 +112,65 @@ def test_default_is_in_default_tags():
 
 def test_default_fallback_constant_is_other():
     assert DEFAULT_FALLBACK_TAG == "other"
+
+
+class TestCurrentTagsIntegration:
+    def test_current_tags_falls_back_when_provider_uninitialized(self):
+        reset_tags_provider()
+        assert current_tags() == FALLBACK_TAGS
+
+    def test_current_tags_returns_live_value_when_provider_initialized(self):
+        reset_tags_provider()
+        provider = TagsProvider()
+        provider._tags = ("coffee", "transport", "other")
+        try:
+            from app.services import tags_provider
+
+            tags_provider._provider = provider
+            assert current_tags() == ("coffee", "transport", "other")
+        finally:
+            reset_tags_provider()
+
+
+class TestTagForOrDefaultUsesLiveSet:
+    @pytest.mark.asyncio
+    async def test_accepts_tag_only_when_in_live_set(self, settings, cache):
+        reset_tags_provider()
+        provider = TagsProvider()
+        # Live set excludes "food".
+        provider._tags = ("transport", "other")
+        try:
+            from app.services import tags_provider
+
+            tags_provider._provider = provider
+            with patch.object(
+                __import__("app.services.categorizer", fromlist=["tag_for"]),
+                "tag_for",
+                AsyncMock(return_value=None),
+            ):
+                # "food" is in the legacy DEFAULT_TAGS but not in the
+                # live set — must be rejected.
+                result = await tag_for_or_default("MYSTERY", default="food")
+            assert result is None
+        finally:
+            reset_tags_provider()
+
+    @pytest.mark.asyncio
+    async def test_accepts_tag_from_live_set(self, settings, cache):
+        reset_tags_provider()
+        provider = TagsProvider()
+        # "live" only exists in the live set, not the fallback.
+        provider._tags = ("live", "other")
+        try:
+            from app.services import tags_provider
+
+            tags_provider._provider = provider
+            with patch.object(
+                __import__("app.services.categorizer", fromlist=["tag_for"]),
+                "tag_for",
+                AsyncMock(return_value=None),
+            ):
+                result = await tag_for_or_default("MYSTERY", default="live")
+            assert result == "live"
+        finally:
+            reset_tags_provider()

@@ -7,7 +7,7 @@ from telegram.ext import ContextTypes
 from app.database.models.user import User
 from app.database.repositories.user import UserRepository
 from app.services.expense import ExpenseService
-from app.services.categorizer import DEFAULT_TAGS
+from app.services.categorizer import current_tags
 from app.telegram.auth import auth_handler
 from app.telegram.handlers._helpers import (
     format_amount,
@@ -75,16 +75,17 @@ def _format_tag_breakdown(
     """Render a per-tag breakdown as a plain-text block.
 
     ``breakdown`` maps ``tag -> signed_sum``. Tags are printed in
-    fixed-enum order so the output stays stable run-to-run, with any
-    unknown tags appended at the bottom (defensive — should never
-    happen given the strict ``/tag`` validation).
+    live-enum order (from config_store via :func:`current_tags`) so the
+    output stays stable run-to-run, with any unknown tags appended at
+    the bottom (defensive — should never happen given the strict
+    ``/tag`` validation).
     """
     if not breakdown and not has_untagged:
         return ""
 
     lines = ["By tag:"]
     seen: set[str] = set()
-    for tag in DEFAULT_TAGS:
+    for tag in current_tags():
         if tag in breakdown:
             amount = breakdown[tag]
             sign = "+" if amount > 0 else "" if amount == 0 else "-"

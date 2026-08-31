@@ -2,7 +2,7 @@ from typing import Any
 
 from telegram import Bot
 
-from app.services.categorizer import DEFAULT_TAGS
+from app.services.categorizer import current_tags
 from app.services.merchant_normalizer import normalize_merchant
 from app.utils.timezone import utc_to_sgt
 
@@ -171,10 +171,10 @@ def render_tag_breakdown_table(
     """Render a per-tag breakdown as a Telegram Rich Message table.
 
     Mirrors the styling of :func:`render_transactions_table` so the two
-    outputs feel consistent. Tags are emitted in the fixed
-    ``DEFAULT_TAGS`` order with any unknown tags appended at the bottom
-    (defensive — should never happen given the strict ``/tag``
-    validation). The Total row is always last.
+    outputs feel consistent. Tags are emitted in the live allowed-tag
+    order (from config_store via :func:`current_tags`) with any unknown
+    tags appended at the bottom (defensive — should never happen given
+    the strict ``/tag`` validation). The Total row is always last.
     """
     if not breakdown and not has_untagged:
         return ""
@@ -188,7 +188,7 @@ def render_tag_breakdown_table(
 
     body_rows: list[str] = []
     seen: set[str] = set()
-    for tag in DEFAULT_TAGS:
+    for tag in current_tags():
         if tag not in breakdown:
             continue
         amount = breakdown[tag]
