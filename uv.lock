@@ -313,7 +313,7 @@ wheels = [
 [[package]]
 name = "config-store-sdk"
 version = "0.1.0"
-source = { git = "https://github.com/marcuspeh/config_store.git?subdirectory=sdk%2Fpython#8eb10255c7649dcea1cc8db7fb41f206c4bbadeb" }
+source = { git = "https://github.com/marcuspeh/config_store.git?subdirectory=sdk%2Fpython#3be0139dc9a7a6db074460c6b0062da9daeef94b" }
 dependencies = [
     { name = "httpx" },
 ]
