@@ -5,13 +5,17 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from app.services.tags_provider import (
+    EMPTY_EXCLUDED,
     FALLBACK_TAGS,
+    ExcludedTagsConfig,
     TagsConfig,
     TagsProvider,
+    _build_excluded,
     _build_tags,
     _parse_csv_tags,
     get_tags_provider,
     init_tags_provider,
+    llm_tags,
     reset_tags_provider,
 )
 
@@ -80,10 +84,98 @@ class TestBuildTags:
             tags_provider._provider = None
 
 
+class TestBuildExcluded:
+    @pytest.mark.asyncio
+    async def test_returns_parsed_tuple(self):
+        cfg = ExcludedTagsConfig("gym,health")
+        result = await _build_excluded(MagicMock(), cfg)
+        assert result == ("gym", "health")
+
+    @pytest.mark.asyncio
+    async def test_returns_empty_on_invalid_payload(self):
+        cfg = ExcludedTagsConfig("")  # empty → invalid
+        result = await _build_excluded(MagicMock(), cfg)
+        assert result == EMPTY_EXCLUDED
+
+    @pytest.mark.asyncio
+    async def test_returns_empty_on_duplicates(self):
+        cfg = ExcludedTagsConfig("gym,gym")
+        result = await _build_excluded(MagicMock(), cfg)
+        assert result == EMPTY_EXCLUDED
+
+    @pytest.mark.asyncio
+    async def test_mirrors_swap_into_singleton(self):
+        from app.services import tags_provider
+
+        provider = TagsProvider()
+        provider._tags = FALLBACK_TAGS
+        provider._excluded = EMPTY_EXCLUDED
+        tags_provider._provider = provider
+
+        try:
+            cfg = ExcludedTagsConfig("gym,health")
+            await _build_excluded(MagicMock(), cfg)
+            assert provider.excluded() == ("gym", "health")
+        finally:
+            tags_provider._provider = None
+
+
 class TestTagsProviderFallback:
     def test_current_returns_fallback_before_start(self):
         provider = TagsProvider()
         assert provider.current() == FALLBACK_TAGS
+
+    def test_excluded_is_empty_before_start(self):
+        provider = TagsProvider()
+        assert provider.excluded() == EMPTY_EXCLUDED
+
+    def test_llm_tags_falls_back_to_current_before_start(self):
+        provider = TagsProvider()
+        assert provider.llm_tags() == FALLBACK_TAGS
+
+
+class TestLlmTagsSubtraction:
+    def test_llm_tags_subtracts_excluded_from_current(self):
+        provider = TagsProvider()
+        provider._tags = ("food", "coffee", "transport", "other")
+        provider._excluded = ("coffee",)
+        # Order preserved; only "coffee" is gone.
+        assert provider.llm_tags() == ("food", "transport", "other")
+
+    def test_llm_tags_drops_excluded_not_in_current(self):
+        # Stale config_store row that points at a tag that no longer
+        # exists in the allowed set — must not raise, must not appear.
+        provider = TagsProvider()
+        provider._tags = ("food", "transport", "other")
+        provider._excluded = ("ghost-tag",)
+        assert provider.llm_tags() == ("food", "transport", "other")
+
+    def test_llm_tags_keeps_last_current_when_all_excluded(self):
+        # Admin excluded every tag by mistake — keep the last one so
+        # the model still has somewhere to answer.
+        provider = TagsProvider()
+        provider._tags = ("food", "transport")
+        provider._excluded = ("food", "transport")
+        assert provider.llm_tags() == ("transport",)
+
+
+class TestLlmTagsHelper:
+    def test_module_helper_returns_fallback_when_uninitialized(self):
+        reset_tags_provider()
+        assert llm_tags() == FALLBACK_TAGS
+
+    def test_module_helper_returns_live_llm_set(self):
+        reset_tags_provider()
+        provider = TagsProvider()
+        provider._tags = ("a", "b", "c")
+        provider._excluded = ("b",)
+        try:
+            from app.services import tags_provider
+
+            tags_provider._provider = provider
+            assert llm_tags() == ("a", "c")
+        finally:
+            reset_tags_provider()
 
 
 class TestTagsProviderStart:
@@ -93,6 +185,7 @@ class TestTagsProviderStart:
             config_store_url="http://cfg.test:6002",
             config_store_project="expense_tracker",
             config_store_tags_key="tags",
+            config_store_tags_excluded_key="tags_excluded_from_llm",
             config_store_poll_seconds=60.0,
         )
         client = AsyncMock()
@@ -114,18 +207,30 @@ class TestTagsProviderStart:
                     await provider.start()
 
         assert provider.current() == FALLBACK_TAGS
-        watcher.start.assert_called_once()
+        assert provider.excluded() == EMPTY_EXCLUDED
+        # Two watchers started: one for the allowed list, one for the
+        # excluded list.
+        assert watcher.start.call_count == 2
 
     @pytest.mark.asyncio
-    async def test_start_uses_live_tags_when_initial_fetch_succeeds(self):
+    async def test_start_uses_live_tags_and_excluded(self):
         settings = MagicMock(
             config_store_url="http://cfg.test:6002",
             config_store_project="expense_tracker",
             config_store_tags_key="tags",
+            config_store_tags_excluded_key="tags_excluded_from_llm",
             config_store_poll_seconds=60.0,
         )
+
+        async def fake_get(key: str) -> str:
+            if key == "tags":
+                return "coffee,food,transport"
+            if key == "tags_excluded_from_llm":
+                return "food"
+            raise AssertionError(f"unexpected key {key!r}")
+
         client = AsyncMock()
-        client.get = AsyncMock(return_value="coffee,food,transport")
+        client.get = AsyncMock(side_effect=fake_get)
 
         with patch(
             "app.services.tags_provider.get_settings", return_value=settings
@@ -143,7 +248,9 @@ class TestTagsProviderStart:
                     await provider.start()
 
         assert provider.current() == ("coffee", "food", "transport")
-        watcher.start.assert_called_once()
+        assert provider.excluded() == ("food",)
+        assert provider.llm_tags() == ("coffee", "transport")
+        assert watcher.start.call_count == 2
 
     @pytest.mark.asyncio
     async def test_start_falls_back_when_initial_payload_invalid(self):
@@ -151,6 +258,7 @@ class TestTagsProviderStart:
             config_store_url="http://cfg.test:6002",
             config_store_project="expense_tracker",
             config_store_tags_key="tags",
+            config_store_tags_excluded_key="tags_excluded_from_llm",
             config_store_poll_seconds=60.0,
         )
         client = AsyncMock()
@@ -172,38 +280,87 @@ class TestTagsProviderStart:
                     await provider.start()
 
         assert provider.current() == FALLBACK_TAGS
-        watcher.start.assert_called_once()
+        # An invalid excluded payload reduces to empty (not FALLBACK_TAGS).
+        assert provider.excluded() == EMPTY_EXCLUDED
+        assert watcher.start.call_count == 2
+
+    @pytest.mark.asyncio
+    async def test_start_tolerates_excluded_fetch_failure(self):
+        # Allowed list fetched successfully; excluded fetch throws.
+        # The provider must still start.
+        settings = MagicMock(
+            config_store_url="http://cfg.test:6002",
+            config_store_project="expense_tracker",
+            config_store_tags_key="tags",
+            config_store_tags_excluded_key="tags_excluded_from_llm",
+            config_store_poll_seconds=60.0,
+        )
+
+        async def fake_get(key: str) -> str:
+            if key == "tags":
+                return "coffee,food"
+            raise Exception("excluded endpoint down")
+
+        client = AsyncMock()
+        client.get = AsyncMock(side_effect=fake_get)
+
+        with patch(
+            "app.services.tags_provider.get_settings", return_value=settings
+        ):
+            with patch(
+                "app.services.tags_provider.ConfigClient", return_value=client
+            ):
+                with patch(
+                    "app.services.tags_provider.ClientWatcher"
+                ) as watcher_cls:
+                    watcher = MagicMock()
+                    watcher_cls.return_value = watcher
+
+                    provider = TagsProvider()
+                    await provider.start()
+
+        assert provider.current() == ("coffee", "food")
+        assert provider.excluded() == EMPTY_EXCLUDED
+        assert provider.llm_tags() == ("coffee", "food")
 
 
 class TestTagsProviderStop:
     @pytest.mark.asyncio
-    async def test_stop_closes_watcher_and_client(self):
+    async def test_stop_closes_both_watchers_and_client(self):
         provider = TagsProvider()
-        watcher = AsyncMock()
+        tags_watcher = AsyncMock()
+        excluded_watcher = AsyncMock()
         client = AsyncMock()
-        provider._watcher = watcher
+        provider._tags_watcher = tags_watcher
+        provider._excluded_watcher = excluded_watcher
         provider._client = client
 
         await provider.stop()
 
-        watcher.aclose.assert_awaited_once()
+        tags_watcher.aclose.assert_awaited_once()
+        excluded_watcher.aclose.assert_awaited_once()
         client.aclose.assert_awaited_once()
-        assert provider._watcher is None
+        assert provider._tags_watcher is None
+        assert provider._excluded_watcher is None
         assert provider._client is None
 
     @pytest.mark.asyncio
     async def test_stop_swallows_close_errors(self):
         provider = TagsProvider()
-        watcher = AsyncMock()
-        watcher.aclose.side_effect = RuntimeError("boom")
+        tags_watcher = AsyncMock()
+        tags_watcher.aclose.side_effect = RuntimeError("boom")
+        excluded_watcher = AsyncMock()
+        excluded_watcher.aclose.side_effect = RuntimeError("boom")
         client = AsyncMock()
         client.aclose.side_effect = RuntimeError("boom")
-        provider._watcher = watcher
+        provider._tags_watcher = tags_watcher
+        provider._excluded_watcher = excluded_watcher
         provider._client = client
 
         # Must not raise — close failures are best-effort.
         await provider.stop()
-        assert provider._watcher is None
+        assert provider._tags_watcher is None
+        assert provider._excluded_watcher is None
         assert provider._client is None
 
     @pytest.mark.asyncio

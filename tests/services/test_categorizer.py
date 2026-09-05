@@ -273,3 +273,60 @@ class TestPayload:
             await tag_for("CHOCFIN")
 
         assert mock_client.captured_payload["model"] == "test-model"
+
+    @pytest.mark.asyncio
+    async def test_payload_omits_excluded_tags(self, settings, cache):
+        """Tags the operator excluded from the LLM must not appear in
+        the system prompt sent to the model.
+        """
+        from app.services.tags_provider import TagsProvider, reset_tags_provider
+
+        provider = TagsProvider()
+        provider._tags = ("food", "coffee", "transport", "other")
+        provider._excluded = ("coffee", "transport")
+        try:
+            from app.services import tags_provider as tp_module
+
+            tp_module._provider = provider
+
+            mock_client = _MockClient(_mock_response("food"))
+            with patch("app.services.categorizer.httpx.AsyncClient", return_value=mock_client):
+                await tag_for("STARBUCKS")
+
+            payload = mock_client.captured_payload
+            assert payload is not None
+            system = payload["messages"][0]["content"]
+            # Excluded tags must not be offered to the LLM.
+            assert "coffee" not in system
+            assert "transport" not in system
+            # Non-excluded tags must still be listed.
+            assert "food" in system
+            assert "other" in system
+        finally:
+            reset_tags_provider()
+
+    @pytest.mark.asyncio
+    async def test_excluded_tag_from_llm_is_still_accepted(self, settings, cache):
+        """If the model emits an excluded-but-valid tag (e.g. it knew
+        about it before the operator excluded it), we should still
+        accept and cache the response — the exclusion is prompt-only.
+        """
+        from app.services.tags_provider import TagsProvider, reset_tags_provider
+
+        provider = TagsProvider()
+        provider._tags = ("food", "coffee", "other")
+        provider._excluded = ("coffee",)  # hidden from the prompt
+        try:
+            from app.services import tags_provider as tp_module
+
+            tp_module._provider = provider
+
+            mock_client = _MockClient(_mock_response("coffee"))
+            with patch("app.services.categorizer.httpx.AsyncClient", return_value=mock_client):
+                result = await tag_for("BLUE_BOTTLE")
+            assert result == "coffee"
+            # Cache write still happened — operator-excluded tags are
+            # just prompt-side filtering, not validation.
+            assert ("blue_bottle", "coffee") in cache.upserts
+        finally:
+            reset_tags_provider()

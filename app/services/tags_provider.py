@@ -3,17 +3,25 @@
 The list of tags the LLM is allowed to return is owned by config_store
 (MongoDB → MySQL cache → HTTP). At boot we spin up a :class:`TagsProvider`
 which polls config_store every ``config_store_poll_seconds`` and rebuilds
-an in-memory tuple of tag strings whenever the underlying comma-separated
-value changes.
+in-memory tuples whenever the underlying comma-separated values change.
 
-When config_store is unreachable or returns something we can't parse, the
-provider stays on :data:`FALLBACK_TAGS` (the original hard-coded list) so
-the rest of the system keeps working offline. The watcher keeps retrying
-in the background, so a transient outage is self-healing.
+Two tag lists are tracked:
 
-The provider exposes a synchronous ``current()`` accessor for the
-in-memory tuple and an async ``start()`` / ``stop()`` lifecycle to start
-and stop the polling task. Lifecycle is wired from :func:`app.main.main`.
+* ``current()`` — the full allowed set. Drives ``/tag`` validation and
+  breakdown rendering. Falls back to :data:`FALLBACK_TAGS` on outage.
+* ``excluded()`` — the subset of tags that should be *hidden from the
+  LLM prompt only*. Still a valid tag for users to assign manually.
+  Empty tuple on outage/missing key.
+
+The LLM-specific accessor :meth:`TagsProvider.llm_tags` (and the helper
+:func:`llm_tags`) returns ``current() - excluded()``. If the subtraction
+would leave the LLM with an empty set, the last tag of ``current()`` is
+kept so the model always has somewhere to answer.
+
+When config_store is unreachable or returns something we can't parse,
+the provider stays on :data:`FALLBACK_TAGS` so the rest of the system
+keeps working offline. The watcher keeps retrying in the background, so
+a transient outage is self-healing.
 """
 
 from __future__ import annotations
@@ -29,9 +37,7 @@ logger = logging.getLogger(__name__)
 
 
 #: Hard-coded fallback used when config_store is unreachable, hasn't been
-#: polled yet, or returns something we can't parse. Kept identical to the
-#: old :data:`app.services.categorizer.DEFAULT_TAGS` constant so existing
-#: DB rows and cached tag values stay valid after the upgrade.
+#: polled yet, or returns something we can't parse.
 FALLBACK_TAGS: Final[tuple[str, ...]] = (
     "food",
     "coffee",
@@ -49,6 +55,11 @@ FALLBACK_TAGS: Final[tuple[str, ...]] = (
     "cash",
     "other",
 )
+
+
+#: Default for the exclude list before config_store has been polled or
+#: when the key is missing/invalid.
+EMPTY_EXCLUDED: Final[tuple[str, ...]] = ()
 
 
 def _parse_csv_tags(raw: str) -> tuple[str, ...] | None:
@@ -73,21 +84,24 @@ def _parse_csv_tags(raw: str) -> tuple[str, ...] | None:
 
 
 class TagsProvider:
-    """Holds the current allowed-tag tuple and the background watcher.
+    """Holds the live allowed / excluded tag tuples and their watchers.
 
     Lifetime::
 
         provider = TagsProvider()
         await provider.start()           # begins polling config_store
         tags = provider.current()        # synchronous, cheap
+        llm_set = provider.llm_tags()    # current() - excluded()
         ...
         await provider.stop()            # cancel polling + close client
     """
 
     def __init__(self) -> None:
         self._tags: tuple[str, ...] = FALLBACK_TAGS
+        self._excluded: tuple[str, ...] = EMPTY_EXCLUDED
         self._client: ConfigClient | None = None
-        self._watcher: ClientWatcher | None = None
+        self._tags_watcher: ClientWatcher | None = None
+        self._excluded_watcher: ClientWatcher | None = None
 
     def current(self) -> tuple[str, ...]:
         """Return the current allowed-tag tuple.
@@ -97,12 +111,43 @@ class TagsProvider:
         """
         return self._tags
 
+    def excluded(self) -> tuple[str, ...]:
+        """Return the current excluded-tag tuple.
+
+        These tags stay in :meth:`current` (so users can still assign
+        them via ``/tag`` and they still appear in breakdowns) but must
+        NOT appear in the LLM prompt.
+
+        Returns an empty tuple when the exclude key is missing,
+        invalid, or hasn't been polled yet — never the full tag list.
+        """
+        return self._excluded
+
+    def llm_tags(self) -> tuple[str, ...]:
+        """Return the tag set the LLM is allowed to return.
+
+        Equals ``current()`` with every entry in ``excluded()`` filtered
+        out. Ignored entries that aren't in ``current()`` are silently
+        dropped (defensive against stale config_store rows).
+
+        If the subtraction would yield an empty tuple we keep the last
+        element of ``current()`` so the model always has at least one
+        option to answer with — otherwise an empty prompt would be
+        useless.
+        """
+        excluded_set = set(self._excluded)
+        filtered = tuple(t for t in self._tags if t not in excluded_set)
+        if filtered:
+            return filtered
+        return (self._tags[-1],)
+
     async def start(self) -> None:
         """Build the SDK client and start polling config_store.
 
         Always succeeds — config_store outages are non-fatal because the
-        provider already has :data:`FALLBACK_TAGS` ready and the SDK's
-        :class:`ClientWatcher` logs and retries on every tick.
+        provider already has :data:`FALLBACK_TAGS` / :data:`EMPTY_EXCLUDED`
+        ready and the SDK's :class:`ClientWatcher` logs and retries on
+        every tick.
         """
         settings = get_settings()
         self._client = ConfigClient(
@@ -111,23 +156,12 @@ class TagsProvider:
             cache_ttl=settings.config_store_poll_seconds,
         )
 
-        # Try an eager first fetch so a healthy config_store applies
-        # before the first poll tick (default 60s).
-        initial_raw: str | None = None
-        try:
-            initial_raw = await self._client.get(settings.config_store_tags_key)
-        except Exception as exc:  # noqa: BLE001
-            # Outages (connection errors, timeouts, 5xx, anything the
-            # SDK or transport raises) must not block startup. We log
-            # and let the watcher's background tick recover.
-            logger.warning(
-                "tags_provider_initial_fetch_failed err=%s fallback=%s",
-                exc,
-                list(FALLBACK_TAGS),
-            )
-
-        if initial_raw is not None:
-            parsed = _parse_csv_tags(initial_raw)
+        initial_tags_raw = await self._safe_initial_fetch(
+            settings.config_store_tags_key,
+            label="tags",
+        )
+        if initial_tags_raw is not None:
+            parsed = _parse_csv_tags(initial_tags_raw)
             if parsed is not None:
                 self._tags = parsed
                 logger.info(
@@ -137,7 +171,7 @@ class TagsProvider:
             else:
                 logger.warning(
                     "tags_provider_invalid_initial_payload raw=%r fallback=%s",
-                    initial_raw,
+                    initial_tags_raw,
                     list(FALLBACK_TAGS),
                 )
         else:
@@ -146,29 +180,84 @@ class TagsProvider:
                 list(FALLBACK_TAGS),
             )
 
-        # Always start the watcher so we self-heal after a transient
-        # outage or invalid initial payload. ``ClientWatcher.new``
-        # raises on the first fetch, so we drive construction manually
-        # and seed it with the value we already have (or the fallback).
-        self._watcher = ClientWatcher(
+        self._tags_watcher = ClientWatcher(
             config_type=TagsConfig,
             init_client=_build_tags,
             client=self._client,
             key=settings.config_store_tags_key,
             poll_interval=settings.config_store_poll_seconds,
             initial_value=self._tags,
-            initial_raw=initial_raw,
+            initial_raw=initial_tags_raw,
         )
-        self._watcher.start()
+        self._tags_watcher.start()
+
+        initial_excluded_raw = await self._safe_initial_fetch(
+            settings.config_store_tags_excluded_key,
+            label="excluded",
+        )
+        if initial_excluded_raw is not None:
+            parsed = _parse_csv_tags(initial_excluded_raw)
+            self._excluded = parsed if parsed is not None else EMPTY_EXCLUDED
+            if parsed is not None:
+                logger.info(
+                    "tags_provider_started excluded=%s source=config_store",
+                    list(self._excluded),
+                )
+            else:
+                logger.warning(
+                    "tags_provider_invalid_initial_excluded_payload "
+                    "raw=%r fallback=%s",
+                    initial_excluded_raw,
+                    list(EMPTY_EXCLUDED),
+                )
+        else:
+            logger.info(
+                "tags_provider_started excluded=%s source=fallback",
+                list(EMPTY_EXCLUDED),
+            )
+
+        self._excluded_watcher = ClientWatcher(
+            config_type=ExcludedTagsConfig,
+            init_client=_build_excluded,
+            client=self._client,
+            key=settings.config_store_tags_excluded_key,
+            poll_interval=settings.config_store_poll_seconds,
+            initial_value=self._excluded,
+            initial_raw=initial_excluded_raw,
+        )
+        self._excluded_watcher.start()
+
+    async def _safe_initial_fetch(self, key: str, *, label: str) -> str | None:
+        """Try to fetch ``key`` during startup. Logs and returns None on
+        any failure (the watcher will retry on the next tick).
+        """
+        client = self._client
+        assert client is not None
+        try:
+            return await client.get(key)
+        except Exception as exc:  # noqa: BLE001
+            logger.warning(
+                "tags_provider_initial_fetch_failed key=%s label=%s err=%s",
+                key,
+                label,
+                exc,
+            )
+            return None
 
     async def stop(self) -> None:
         """Cancel polling and close the underlying SDK client."""
-        if self._watcher is not None:
-            try:
-                await self._watcher.aclose()
-            except Exception as exc:  # noqa: BLE001
-                logger.warning("tags_provider_watcher_close_failed err=%s", exc)
-            self._watcher = None
+        for watcher_attr in ("_tags_watcher", "_excluded_watcher"):
+            watcher = getattr(self, watcher_attr)
+            if watcher is not None:
+                try:
+                    await watcher.aclose()
+                except Exception as exc:  # noqa: BLE001
+                    logger.warning(
+                        "tags_provider_watcher_close_failed watcher=%s err=%s",
+                        watcher_attr,
+                        exc,
+                    )
+                setattr(self, watcher_attr, None)
         if self._client is not None:
             try:
                 await self._client.aclose()
@@ -177,16 +266,18 @@ class TagsProvider:
             self._client = None
 
 
-# --------------------------------------------------------------------- #
-# SDK integration helpers
-# --------------------------------------------------------------------- #
-
-
 class TagsConfig:
-    """Typed shape used by :class:`config_store.ClientWatcher`.
+    """Typed shape used by :class:`config_store.ClientWatcher` for the
+    full allowed-tag payload.
+    """
 
-    The SDK parses the config_store JSON payload into this object and
-    hands it to ``_build_tags`` to construct the live tags tuple.
+    def __init__(self, tags: str) -> None:
+        self.tags = tags
+
+
+class ExcludedTagsConfig:
+    """Typed shape used by :class:`config_store.ClientWatcher` for the
+    excluded-from-LLM tag payload.
     """
 
     def __init__(self, tags: str) -> None:
@@ -194,13 +285,7 @@ class TagsConfig:
 
 
 async def _build_tags(client: ConfigClient, cfg: TagsConfig) -> tuple[str, ...]:
-    """SDK init_client: turn the parsed config into the live tuple.
-
-    Called by ClientWatcher on the initial fetch and on every change.
-    Returns the new tuple — the watcher swaps it into the live state and
-    also calls :func:`_apply_tags` so the process-wide singleton tracks
-    the change.
-    """
+    """SDK init_client for the allowed-list payload."""
     parsed = _parse_csv_tags(cfg.tags)
     if parsed is None:
         logger.warning(
@@ -209,9 +294,6 @@ async def _build_tags(client: ConfigClient, cfg: TagsConfig) -> tuple[str, ...]:
             list(FALLBACK_TAGS),
         )
         return FALLBACK_TAGS
-    # Mirror the swap into the module-level singleton so readers that
-    # only hold a reference to the provider still see the change. The
-    # watcher keeps its own reference too; this is just belt + braces.
     provider = _provider_singleton()
     if provider is not None:
         provider._tags = parsed
@@ -219,18 +301,43 @@ async def _build_tags(client: ConfigClient, cfg: TagsConfig) -> tuple[str, ...]:
     return parsed
 
 
+async def _build_excluded(
+    client: ConfigClient, cfg: ExcludedTagsConfig
+) -> tuple[str, ...]:
+    """SDK init_client for the excluded-list payload.
+
+    Invalid payloads (empty / duplicates) reduce to :data:`EMPTY_EXCLUDED`
+    so a typo never silently hides every tag from the LLM.
+    """
+    parsed = _parse_csv_tags(cfg.tags)
+    if parsed is None:
+        provider = _provider_singleton()
+        if provider is not None:
+            provider._excluded = EMPTY_EXCLUDED
+        logger.warning(
+            "tags_provider_invalid_excluded_payload raw=%r fallback=%s",
+            cfg.tags,
+            list(EMPTY_EXCLUDED),
+        )
+        return EMPTY_EXCLUDED
+    provider = _provider_singleton()
+    if provider is not None:
+        provider._excluded = parsed
+    logger.info(
+        "tags_provider_updated excluded=%s source=config_store", list(parsed)
+    )
+    return parsed
+
+
 def _provider_singleton() -> TagsProvider | None:
     """Return the module-level provider, if initialized.
 
-    Defined as a helper so :func:`_build_tags` doesn't reach into module
+    Defined as a helper so the watcher callbacks don't reach into module
     globals directly (cleaner for monkey-patching in tests).
     """
     return _provider
 
 
-# Module-level singleton accessor. ``app.main`` calls
-# ``await get_tags_provider().start()`` at boot and ``await .stop()`` on
-# shutdown; everything else reads ``get_tags_provider().current()``.
 _provider: TagsProvider | None = None
 
 
@@ -246,6 +353,20 @@ def get_tags_provider() -> TagsProvider:
             "TagsProvider not initialized; call init_tags_provider() first"
         )
     return _provider
+
+
+def llm_tags() -> tuple[str, ...]:
+    """Return the tag set the LLM is allowed to return.
+
+    Convenience wrapper around :meth:`TagsProvider.llm_tags` that falls
+    back to :data:`FALLBACK_TAGS` when the provider hasn't been
+    initialized yet (e.g. inside a unit test that didn't set it up).
+    Never raises.
+    """
+    try:
+        return get_tags_provider().llm_tags()
+    except RuntimeError:
+        return FALLBACK_TAGS
 
 
 def init_tags_provider() -> TagsProvider:

@@ -55,11 +55,16 @@ class Settings(BaseSettings):
 
     # Config store (sibling service that owns shared configuration).
     # The watcher in TagsProvider polls this URL for the allowed tag
-    # list (project=expense_tracker, key=tags). When unreachable the
-    # hard-coded FALLBACK_TAGS in categorizer.py is used instead.
+    # list (project=expense_tracker, key=tags) and a separate exclude
+    # list (key=config_store_tags_excluded_key). The full allowed set
+    # drives /tag validation and breakdown rendering; the LLM prompt
+    # sees the allowed set minus the excluded tags (so internal-only
+    # tags stay hidden from the model). When unreachable the hard-coded
+    # FALLBACK_TAGS in tags_provider.py is used instead.
     config_store_url: str = Field(default="http://localhost:6002")
     config_store_project: str = Field(default="expense_tracker")
     config_store_tags_key: str = Field(default="tags")
+    config_store_tags_excluded_key: str = Field(default="tags_excluded_from_llm")
     config_store_poll_seconds: float = Field(default=60.0)
 
     @property

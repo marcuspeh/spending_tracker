@@ -31,7 +31,7 @@ from app.database.repositories.merchant_category_cache import (
     MerchantTagCacheRepository,
 )
 from app.services.merchant_normalizer import normalize_merchant
-from app.services.tags_provider import FALLBACK_TAGS, get_tags_provider
+from app.services.tags_provider import FALLBACK_TAGS, get_tags_provider, llm_tags
 
 logger = logging.getLogger(__name__)
 
@@ -133,12 +133,19 @@ async def tag_for(merchant: str) -> str | None:
         # LLM is not configured — skip silently rather than spam logs.
         return None
 
+    # The LLM prompt only lists ``llm_tags()`` (full allowed set minus
+    # any tags the operator wants to hide from the model — see
+    # app.services.tags_provider). Validation still accepts anything in
+    # the full allowed set, so an excluded-but-valid reply from the
+    # model (e.g. the model knew about it before the operator excluded
+    # it) still round-trips correctly.
+    prompt_tags = llm_tags()
     allowed = current_tags()
 
     url = f"{settings.llm_base_url.rstrip('/')}/chat/completions"
     payload = {
         "model": settings.llm_model,
-        "messages": _build_prompt(merchant, allowed),
+        "messages": _build_prompt(merchant, prompt_tags),
         "max_tokens": 16,
         "temperature": 0.0,
         "thinking": {
@@ -209,6 +216,10 @@ async def tag_for_or_default(
     If ``default`` is None, :data:`DEFAULT_FALLBACK_TAG` (``other``)
     is used.
     """
+    # ``default`` is validated against the *full* allowed set, not the
+    # LLM-restricted one — ``/tag`` and the ingestion fallback both go
+    # through here, and neither should reject an excluded tag since
+    # excluded == hidden-from-LLM, not hidden-from-user.
     allowed = current_tags()
     if default is None:
         default = DEFAULT_FALLBACK_TAG
