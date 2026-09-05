@@ -20,7 +20,6 @@ from __future__ import annotations
 
 from app.services.merchant_normalizer import normalize_merchant
 
-
 BLACKLISTED_MERCHANTS: frozenset[str] = frozenset({
     "chocfin pte. ltd. - chocolate clients ac",
 })

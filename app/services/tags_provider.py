@@ -32,6 +32,13 @@ from typing import Final
 from config_store import ClientWatcher, ConfigClient
 
 from app.config.settings import get_settings
+from app.services.tags_config_builders import (
+    ExcludedTagsConfig,
+    TagsConfig,
+    _build_excluded,
+    _build_tags,
+    _parse_csv_tags,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -60,27 +67,6 @@ FALLBACK_TAGS: Final[tuple[str, ...]] = (
 #: Default for the exclude list before config_store has been polled or
 #: when the key is missing/invalid.
 EMPTY_EXCLUDED: Final[tuple[str, ...]] = ()
-
-
-def _parse_csv_tags(raw: str) -> tuple[str, ...] | None:
-    """Parse a comma-separated tag string into a normalized tuple.
-
-    Returns ``None`` if the result is empty or contains duplicates — the
-    caller falls back to :data:`FALLBACK_TAGS` in that case so the LLM
-    prompt never offers the user an empty or duplicated set.
-
-    Whitespace around each token is stripped; empty tokens (e.g. trailing
-    comma) are dropped.
-    """
-    if not raw:
-        return None
-    parts = tuple(p.strip().lower() for p in raw.split(","))
-    parts = tuple(p for p in parts if p)
-    if not parts:
-        return None
-    if len(set(parts)) != len(parts):
-        return None
-    return parts
 
 
 class TagsProvider:
@@ -266,79 +252,17 @@ class TagsProvider:
             self._client = None
 
 
-class TagsConfig:
-    """Typed shape used by :class:`config_store.ClientWatcher` for the
-    full allowed-tag payload.
-    """
-
-    def __init__(self, tags: str) -> None:
-        self.tags = tags
-
-
-class ExcludedTagsConfig:
-    """Typed shape used by :class:`config_store.ClientWatcher` for the
-    excluded-from-LLM tag payload.
-    """
-
-    def __init__(self, tags: str) -> None:
-        self.tags = tags
-
-
-async def _build_tags(client: ConfigClient, cfg: TagsConfig) -> tuple[str, ...]:
-    """SDK init_client for the allowed-list payload."""
-    parsed = _parse_csv_tags(cfg.tags)
-    if parsed is None:
-        logger.warning(
-            "tags_provider_invalid_payload raw=%r fallback=%s",
-            cfg.tags,
-            list(FALLBACK_TAGS),
-        )
-        return FALLBACK_TAGS
-    provider = _provider_singleton()
-    if provider is not None:
-        provider._tags = parsed
-    logger.info("tags_provider_updated tags=%s source=config_store", list(parsed))
-    return parsed
-
-
-async def _build_excluded(
-    client: ConfigClient, cfg: ExcludedTagsConfig
-) -> tuple[str, ...]:
-    """SDK init_client for the excluded-list payload.
-
-    Invalid payloads (empty / duplicates) reduce to :data:`EMPTY_EXCLUDED`
-    so a typo never silently hides every tag from the LLM.
-    """
-    parsed = _parse_csv_tags(cfg.tags)
-    if parsed is None:
-        provider = _provider_singleton()
-        if provider is not None:
-            provider._excluded = EMPTY_EXCLUDED
-        logger.warning(
-            "tags_provider_invalid_excluded_payload raw=%r fallback=%s",
-            cfg.tags,
-            list(EMPTY_EXCLUDED),
-        )
-        return EMPTY_EXCLUDED
-    provider = _provider_singleton()
-    if provider is not None:
-        provider._excluded = parsed
-    logger.info(
-        "tags_provider_updated excluded=%s source=config_store", list(parsed)
-    )
-    return parsed
+_provider: TagsProvider | None = None
 
 
 def _provider_singleton() -> TagsProvider | None:
     """Return the module-level provider, if initialized.
 
-    Defined as a helper so the watcher callbacks don't reach into module
+    Defined as a helper so the watcher callbacks (in
+    :mod:`app.services.tags_config_builders`) don't reach into module
     globals directly (cleaner for monkey-patching in tests).
     """
     return _provider
-
-
-_provider: TagsProvider | None = None
 
 
 def get_tags_provider() -> TagsProvider:
@@ -385,3 +309,24 @@ def reset_tags_provider() -> None:
     """Drop the singleton. Tests use this between cases."""
     global _provider
     _provider = None
+
+
+__all__ = [
+    "EMPTY_EXCLUDED",
+    "FALLBACK_TAGS",
+    "TagsProvider",
+    "_provider_singleton",
+    "get_tags_provider",
+    "init_tags_provider",
+    "llm_tags",
+    "reset_tags_provider",
+    "_parse_csv_tags",
+    "TagsConfig",
+    "ExcludedTagsConfig",
+    "_build_tags",
+    "_build_excluded",
+]
+
+
+# Re-exports so callers importing from tags_provider get the same names
+# they used to. Ordering is irrelevant — __all__ already enumerates them.

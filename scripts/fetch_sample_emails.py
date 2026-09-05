@@ -69,8 +69,8 @@ def main():
     )
     args = parser.parse_args()
 
-    settings = get_settings()
-    print(f"Connecting to {settings.imap_host}...")
+    imap_host = get_settings().imap_host
+    print(f"Connecting to {imap_host}...")
 
     try:
         emails = fetch_emails(args.limit, unseen_only=not args.all)

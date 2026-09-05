@@ -99,11 +99,6 @@ def _normalize(raw: str, allowed: tuple[str, ...]) -> str | None:
     return None
 
 
-def _normalize_merchant_key(merchant: str) -> str:
-    """Normalize a merchant string for use as a cache key."""
-    return normalize_merchant(merchant)
-
-
 async def tag_for(merchant: str) -> str | None:
     """Return a tag for ``merchant``, or None if classification fails.
 
@@ -124,7 +119,7 @@ async def tag_for(merchant: str) -> str | None:
 
     # Read-through cache. Skip the LLM entirely on a hit.
     cache = MerchantTagCacheRepository()
-    cache_key = _normalize_merchant_key(merchant)
+    cache_key = normalize_merchant(merchant)
     cached = await cache.get(cache_key)
     if cached is not None:
         return cached
@@ -161,7 +156,7 @@ async def tag_for(merchant: str) -> str | None:
         async with httpx.AsyncClient(timeout=10.0) as client:
             resp = await client.post(url, headers=headers, json=payload)
         resp.raise_for_status()
-    except (httpx.HTTPError, httpx.TimeoutException) as exc:
+    except httpx.HTTPError as exc:
         logger.warning("tag_for_llm_request_failed: %s merchant=%s", exc, merchant)
         return None
 

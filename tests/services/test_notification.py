@@ -11,7 +11,6 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 
 from app.database.enums import PaymentMethod
-from app.database.models.transaction import Transaction
 from app.database.models.user import User
 from app.services.notification import NotificationService, format_transaction_notification
 

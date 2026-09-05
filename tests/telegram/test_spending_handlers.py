@@ -3,8 +3,6 @@ and the ``_resolve_user`` / ``_send_with_fallback`` helpers they share."""
 
 from unittest.mock import AsyncMock, MagicMock, patch
 
-import pytest
-
 from app.services import expense as expense_module
 from app.telegram.handlers import queries
 from app.telegram.handlers.queries import (

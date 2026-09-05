@@ -100,9 +100,15 @@ class Settings(BaseSettings):
 
     @field_validator("timezone")
     @classmethod
-    def timezone_must_be_sgt(cls, v: str) -> str:
-        if v != "Asia/Singapore":
-            raise ValueError("TIMEZONE must be Asia/Singapore")
+    def timezone_must_be_valid(cls, v: str) -> str:
+        from zoneinfo import ZoneInfo
+
+        try:
+            ZoneInfo(v)
+        except (KeyError, OSError) as exc:
+            raise ValueError(
+                f"Invalid TIMEZONE: {v!r} — use an IANA tz name (e.g. Asia/Singapore)"
+            ) from exc
         return v
 
     @field_validator("log_level")

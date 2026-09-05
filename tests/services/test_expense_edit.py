@@ -5,12 +5,10 @@ We need to surface bad input as a friendly error rather than letting
 ``Decimal.InvalidOperation`` crash the handler.
 """
 
-from datetime import datetime
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from app.database.enums import PaymentMethod
 from app.database.models.transaction import Transaction
 from app.services.expense import ExpenseService, InvalidEditValue
 

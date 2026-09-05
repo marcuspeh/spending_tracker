@@ -1,13 +1,13 @@
-import structlog
 from typing import Awaitable, Callable
 
+import structlog
 from telegram import Update
 from telegram.ext import ContextTypes
 
 from app.database.models.user import User
 from app.database.repositories.user import UserRepository
-from app.services.expense import ExpenseService
 from app.services.categorizer import current_tags
+from app.services.expense import ExpenseService
 from app.telegram.auth import auth_handler
 from app.telegram.handlers._helpers import (
     format_amount,

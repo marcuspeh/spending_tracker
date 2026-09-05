@@ -66,16 +66,14 @@ def _grab_rule() -> NormalizationRule:
     )
 
 
-# Catch-all: trim + lowercase + collapse whitespace.
+# Catch-all: the caller already canonicalized whitespace+case before
+# running the rule pipeline, so this rule is a structural no-op that
+# guarantees every input matches exactly one rule.
 def _default_rule() -> NormalizationRule:
-    def _transform(text: str) -> str:
-        # Collapse runs of whitespace (spaces, tabs, asterisks all count).
-        return " ".join(text.split()).strip()
-
     return NormalizationRule(
         name="default",
         matches=lambda _text: True,
-        transform=_transform,
+        transform=lambda text: text,
     )
 
 
