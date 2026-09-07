@@ -65,6 +65,37 @@ class TestColumns:
         html = render_transactions_table([_fake_txn()])
         assert ">1<" in html
 
+    def test_default_includes_time_and_method(self):
+        html = render_transactions_table([_fake_txn()])
+        assert ">TIME<" in html
+        assert ">METHOD<" in html
+
+    def test_show_time_false_hides_time_column(self):
+        html = render_transactions_table(
+            [_fake_txn()], show_time=False, show_method=False
+        )
+        assert ">TIME<" not in html
+        assert ">METHOD<" not in html
+        # Date, amount, merchant, tag still present
+        assert ">DATE<" in html
+        assert ">AMOUNT<" in html
+        assert ">MERCHANT<" in html
+        assert ">TAG<" in html
+
+    def test_show_method_false_only_hides_method(self):
+        html = render_transactions_table(
+            [_fake_txn()], show_time=True, show_method=False
+        )
+        assert ">TIME<" in html
+        assert ">METHOD<" not in html
+
+    def test_show_time_false_only_hides_time(self):
+        html = render_transactions_table(
+            [_fake_txn()], show_time=False, show_method=True
+        )
+        assert ">TIME<" not in html
+        assert ">METHOD<" in html
+
 
 class TestDescribeTagForDisplay:
     def test_capitalizes_lowercase(self):

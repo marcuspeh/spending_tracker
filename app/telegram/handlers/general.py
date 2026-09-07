@@ -25,7 +25,7 @@ async def help_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
 Available commands:
 
 Viewing transactions:
-/latest [count] - Show latest transactions as a table (default: 10, max: 50)
+/latest [count] - Show latest transactions as a compact table (default: 10, max: 50; no time/method columns)
 /today - Show today's spending total
 /week - Show this week's spending total
 /month - Show this month's spending total

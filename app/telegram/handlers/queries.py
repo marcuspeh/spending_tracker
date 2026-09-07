@@ -175,7 +175,9 @@ async def latest_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
     remember_recent(chat_id, [t.id for t in transactions])
 
     title = "Latest transactions"
-    html = render_transactions_table(transactions, _title=title)
+    html = render_transactions_table(
+        transactions, _title=title, show_time=False, show_method=False
+    )
     await _send_with_fallback(
         context, chat_id, html, format_transactions(transactions, title)
     )

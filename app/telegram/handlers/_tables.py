@@ -41,7 +41,13 @@ def _cell(text: str, *, header: bool = False) -> str:
 # Transactions table
 # ---------------------------------------------------------------------------
 
-def render_transactions_table(transactions: list, _title: str = "Transactions") -> str:
+def render_transactions_table(
+    transactions: list,
+    _title: str = "Transactions",
+    *,
+    show_time: bool = True,
+    show_method: bool = True,
+) -> str:
     """Render a list of transactions as a Telegram Rich Message table.
 
     Used by every command that returns a list of transactions
@@ -56,12 +62,23 @@ def render_transactions_table(transactions: list, _title: str = "Transactions") 
     instead, so an empty filtered list still shows the user what they
     searched for.
 
+    ``show_time`` and ``show_method`` are optional flags that hide the
+    ``TIME`` and ``METHOD`` columns respectively. ``/latest`` uses a
+    tighter layout without these columns so the table fits on a phone
+    screen; ``/search`` and ``/range`` keep the full layout.
+
     Returns the HTML string ready to pass to ``send_rich_message``.
     """
     if not transactions:
         return f"<p>{escape_html(_title)}</p><p>No transactions found.</p>"
 
-    headers = ["#", "DATE", "TIME", "AMOUNT", "METHOD", "MERCHANT", "TAG"]
+    headers = ["#", "DATE"]
+    if show_time:
+        headers.append("TIME")
+    headers += ["AMOUNT"]
+    if show_method:
+        headers.append("METHOD")
+    headers += ["MERCHANT", "TAG"]
     head_row = "<tr>" + "".join(_cell(h, header=True) for h in headers) + "</tr>"
 
     body_rows = []
@@ -69,17 +86,15 @@ def render_transactions_table(transactions: list, _title: str = "Transactions") 
         time_sgt = utc_to_sgt(txn.transaction_time)
         sign = "-" if txn.amount < 0 else "+"
         amount = f"{sign}{format_amount(txn.amount)}"
-        row = (
-            "<tr>"
-            + _cell(str(offset))
-            + _cell(time_sgt.strftime("%d %b"))
-            + _cell(time_sgt.strftime("%H:%M"))
-            + _cell(amount)
-            + _cell(method_display_for_cell(txn.payment_method.value))
-            + _cell(normalized_merchant_display(txn.merchant))
-            + _cell(tag_display_for_cell(txn))
-            + "</tr>"
-        )
+        row = "<tr>" + _cell(str(offset)) + _cell(time_sgt.strftime("%d %b"))
+        if show_time:
+            row += _cell(time_sgt.strftime("%H:%M"))
+        row += _cell(amount)
+        if show_method:
+            row += _cell(method_display_for_cell(txn.payment_method.value))
+        row += _cell(normalized_merchant_display(txn.merchant)) + _cell(
+            tag_display_for_cell(txn)
+        ) + "</tr>"
         body_rows.append(row)
 
     return (
