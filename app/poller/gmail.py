@@ -18,6 +18,7 @@ from app.services.parsers import (
     UOBPayNowParser,
 )
 from app.telegram.bot import TelegramBot
+from app.utils.fx import build_converter
 from app.utils.html import strip_html
 
 logger = structlog.get_logger()
