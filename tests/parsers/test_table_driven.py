@@ -25,9 +25,11 @@ from app.services.parsers.dbs_cc import DBSCCParser
 from app.services.parsers.dbs_paynow import DBSPayNowParser
 from app.services.parsers.paylah import PayLahParser
 from app.services.parsers.registry import ParserRegistry
+from app.services.parsers.trust_cc import TrustCCParser
 from app.services.parsers.uob_cc import UOBCCParser
 from app.services.parsers.uob_paynow import UOBPayNowParser
 from app.utils.timezone import SGT
+from tests.parsers._fx_stub import StubFxConverter
 from tests.parsers.test_real_email_fixtures import load_email
 
 FIXTURES_DIR = Path(__file__).resolve().parents[1] / "fixtures" / "email_samples"
@@ -40,6 +42,7 @@ def _make_registry() -> ParserRegistry:
     registry.register(DBSCCParser())
     registry.register(DBSPayNowParser())
     registry.register(PayLahParser())
+    registry.register(TrustCCParser(fx_converter=StubFxConverter()))
     return registry
 
 
@@ -90,6 +93,22 @@ PARSE_CASES: list[ParseCase] = [
         expected_method="PAYLAH_DEBIT",
         expected_time=datetime(2026, 7, 16, 10, 35, tzinfo=SGT),
         expected_merchant="CHOCFIN PTE. LTD. - CHOCOLATE CLIENTS AC",
+    ),
+    ParseCase(
+        name="trust_cc_local",
+        filename="trust_cc/Yay! Transaction successful.txt",
+        expected_amount=Decimal("3.00"),
+        expected_method="TRUST_CC",
+        expected_time=datetime(2026, 9, 5, 15, 3, tzinfo=SGT),
+        expected_merchant="STARBUCKS COFFEE@ YTP SINGAPORE",
+    ),
+    ParseCase(
+        name="trust_cc_overseas",
+        filename="trust_cc/Yay! Overseas transaction successful.txt",
+        expected_amount=Decimal("1808.70"),
+        expected_method="TRUST_CC",
+        expected_time=datetime(2026, 9, 24, 21, 23, tzinfo=SGT),
+        expected_merchant="MACHINES SDN BHD KUALA LUMPUR",
     ),
     ParseCase(
         name="uob_cc_direct",

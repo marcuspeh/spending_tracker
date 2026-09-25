@@ -13,6 +13,7 @@ from pathlib import Path
 import pytest
 
 from app.services.parsers.registry import ParserRegistry
+from tests.parsers._fx_stub import StubFxConverter
 from tests.parsers.test_real_email_fixtures import load_email
 
 FIXTURES_DIR = Path(__file__).resolve().parents[1] / "fixtures" / "email_samples"
@@ -29,6 +30,7 @@ def _build_production_registry() -> ParserRegistry:
         DBSCCParser,
         DBSPayNowParser,
         PayLahParser,
+        TrustCCParser,
         UOBCCParser,
         UOBPayNowParser,
     )
@@ -39,6 +41,7 @@ def _build_production_registry() -> ParserRegistry:
     registry.register(DBSCCParser())
     registry.register(DBSPayNowParser())
     registry.register(PayLahParser())
+    registry.register(TrustCCParser(fx_converter=StubFxConverter()))
     return registry
 
 
@@ -91,7 +94,7 @@ def test_production_registry_rejects_parse_failures(production_registry, filenam
     )
 
 
-def test_production_registry_registers_all_five_parsers(production_registry):
+def test_production_registry_registers_all_six_parsers(production_registry):
     """Guard against dropping a parser from gmail.py again."""
     names = [p.name for p in production_registry.get_parsers()]
     expected = [
@@ -100,5 +103,6 @@ def test_production_registry_registers_all_five_parsers(production_registry):
         "DBS_CC",
         "DBS_PAYNOW",
         "PAYLAH",
+        "TRUST_CC",
     ]
     assert names == expected, f"production registry order changed: got {names}"

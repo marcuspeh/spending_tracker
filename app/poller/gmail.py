@@ -13,6 +13,7 @@ from app.services.parsers import (
     DBSPayNowParser,
     ParserRegistry,
     PayLahParser,
+    TrustCCParser,
     UOBCCParser,
     UOBPayNowParser,
 )
@@ -39,13 +40,18 @@ class GmailPoller:
         # Set up parser registry — one parser per channel. DBSPayNowParser
         # is registered before PayLahParser so PayNow wins when both
         # signals appear (some PayLah-funded transfers come from PayLah!
-        # Alerts but say "PayNow Transfer" in the body).
+        # Alerts but say "PayNow Transfer" in the body). TrustCCParser
+        # needs an FX converter so overseas transactions come back in SGD.
+        fx_converter = build_converter(
+            markup_pct=self.settings.fx_markup_pct,
+        )
         self.parser_registry = ParserRegistry()
         self.parser_registry.register(UOBCCParser())
         self.parser_registry.register(UOBPayNowParser())
         self.parser_registry.register(DBSCCParser())
         self.parser_registry.register(DBSPayNowParser())
         self.parser_registry.register(PayLahParser())
+        self.parser_registry.register(TrustCCParser(fx_converter=fx_converter))
 
     async def start(self) -> None:
         """Start the polling loop."""

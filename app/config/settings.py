@@ -53,6 +53,12 @@ class Settings(BaseSettings):
     llm_api_key: str = Field(default="")
     llm_model: str = Field(default="minimax/minimax-m2.7")
 
+    # FX (foreign-currency → SGD conversion for Trust overseas alerts).
+    # Markup is the percentage added on top of the mid-market rate
+    # (e.g. 0.005 == +0.5%). The provider is hard-coded to the Google
+    # Finance scraper — see ``app.utils.fx.GoogleFinanceScraper``.
+    fx_markup_pct: float = Field(default=0.005)
+
     # Config store (sibling service that owns shared configuration).
     # The watcher in TagsProvider polls this URL for the allowed tag
     # list (project=expense_tracker, key=tags) and a separate exclude
