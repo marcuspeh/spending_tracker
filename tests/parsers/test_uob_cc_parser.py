@@ -132,6 +132,24 @@ class TestUOBCCParser:
         assert result.merchant == "TikTok Shop Seller"
         assert result.payment_method == "UOB_CC"
 
+    def test_parse_purchase_with_at_in_merchant(self):
+        # UOB merchant names like "MONSTER CURRY @ SUNTEC" and
+        # "STARBUCKS COFFEE@ YTP" contain an `@` that's not in the
+        # original capture class. Without the fix the merchant capture
+        # silently falls back to the parser name ("UOB_CC").
+        email = self._make_email(
+            subject="UOB - Transaction Alert",
+            body=(
+                "A transaction of SGD 26.98 was made with your UOB Card "
+                "ending 1395 on 19/09/26 at MONSTER CURRY @ SUNTEC. If "
+                "unauthorised, call 24/7 Fraud Hotline now"
+            ),
+        )
+        result = self.parser.parse(email)
+        assert result.amount == Decimal("26.98")
+        assert result.merchant == "MONSTER CURRY @ SUNTEC"
+        assert result.payment_method == "UOB_CC"
+
     def test_merchant_is_not_pulled_from_disclaimer_footer(self):
         # The UOB standard disclaimer contains "from your computer
         # system" in lowercase. If the regex runs under IGNORECASE the

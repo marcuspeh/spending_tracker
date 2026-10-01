@@ -41,13 +41,20 @@ class UOBCCParser(BankParser):
     ]
 
     # Merchant: "from SHOPEE APPLEPAY" (refund) or "at BUS/MRT" / "at SHOPEE
-    # SG MP" / "at TAMJAI SAM* TAMJAI MIX" / "at TikTok Shop Seller"
-    # (purchase). Keyword is case-insensitive; capture allows mixed case but
-    # the FIRST char must be uppercase so the lowercase "from your computer
-    # system" in UOB's disclaimer footer doesn't sneak in. `*` is in the
-    # class for card-network suffixes.
+    # SG MP" / "at TAMJAI SAM* TAMJAI MIX" / "at TikTok Shop Seller" /
+    # "at MONSTER CURRY @ SUNTEC" (purchase). Keyword is case-insensitive;
+    # capture allows mixed case but the FIRST char must be uppercase so the
+    # lowercase "from your computer system" in UOB's disclaimer footer
+    # doesn't sneak in. `*` is in the class for card-network suffixes and
+    # `@` for venue-style names (e.g. "MONSTER CURRY @ SUNTEC"). The
+    # capture is "anything except period/newline" so future special chars
+    # (?, !, +, parentheses, etc.) are picked up without needing to
+    # enumerate them. Terminal anchors cover: refund connector keywords
+    # (`has`, `is`, `on`, `at`, `to`), the `. If ` sentence break used by
+    # purchase alerts, and a generic `.` / `,` / end-of-string.
     _merchant_re = compile(
-        r"\b(?i:at|from)\s+([A-Z][A-Za-z0-9][A-Za-z0-9\s&.'*/\-]*?)(?=\s+(?:has|is|on|at|to|with|in|by|for|the|a|an)\s|\s+\d|\.|,|$)",
+        r"\b(?i:at|from)\s+([A-Z][A-Za-z0-9][^\.\n]*?)"
+        r"(?=\s+(?:has|is|on|at|with|to)\b|\.\s*If\b|[.,]|$)",
     )
 
     # Dates: "on 16/07/26", "on 06 Jul 2026", "on 29 Jul 26, 10:55PM" or
