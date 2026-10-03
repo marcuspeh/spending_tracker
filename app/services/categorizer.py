@@ -17,6 +17,25 @@ We keep :data:`DEFAULT_TAGS` exported as an alias for the fallback list
 so existing tests and Telegram handlers keep working without
 modification — production code should call :func:`current_tags` to
 read the live value.
+
+Tool calling
+------------
+The model is given the tools registered with
+:func:`app.services.tools.default_registry` — currently just
+``curl_website``, which lets it look up an ambiguous merchant's
+domain (e.g. ``AMZN`` → ``amazon.com``). Tools execute server-side in
+:func:`app.services.tools.execute` and only public http(s) GETs are
+permitted.
+
+Adding a new tool is straightforward — drop a new module under
+:mod:`app.services.tools`, subclass :class:`~app.services.tools.Tool`,
+and self-register on import. The agent loop picks it up automatically.
+
+A hard cap of :data:`MAX_ITERATIONS` chat-completion round-trips keeps
+the worst case bounded. After the cap the model MUST answer with a tag
+in its next message (the system prompt enforces it); if it still emits
+a tool_call we strip it and try to parse the trailing text instead,
+falling back to ``None`` on total failure.
 """
 
 from __future__ import annotations
@@ -32,6 +51,8 @@ from app.database.repositories.merchant_category_cache import (
 )
 from app.services.merchant_normalizer import normalize_merchant
 from app.services.tags_provider import FALLBACK_TAGS, get_tags_provider, llm_tags
+from app.services.tools import execute as execute_tool
+from app.services.tools import specs as tool_specs
 
 logger = logging.getLogger(__name__)
 
@@ -45,6 +66,13 @@ DEFAULT_TAGS: Final[tuple[str, ...]] = FALLBACK_TAGS
 
 #: Default tag used when the LLM fails or returns an out-of-set value.
 DEFAULT_FALLBACK_TAG: Final[str] = "other"
+
+
+#: Hard cap on chat-completion round-trips (user turn + N tool exchanges)
+#: for a single :func:`tag_for` invocation. The system prompt tells the
+#: model it MUST emit a tag after this many turns, so the call returns a
+#: verdict or ``None`` in bounded time.
+MAX_ITERATIONS: Final[int] = 5
 
 
 def current_tags() -> tuple[str, ...]:
@@ -63,24 +91,31 @@ def current_tags() -> tuple[str, ...]:
         return DEFAULT_TAGS
 
 
-def _build_prompt(merchant: str, allowed: tuple[str, ...]) -> list[dict[str, str]]:
-    """Build the chat-completion messages for the LLM.
+def _build_prompt(
+    merchant: str,
+    allowed: tuple[str, ...],
+) -> list[dict]:
+    """Build the chat-completion messages.
 
-    We use a tiny system prompt that constrains the model to reply with
-    one of the live tags, and a single user prompt containing the
-    merchant. No other context is sent — the merchant is the only
-    signal we have.
+    The system prompt is permissive about consulting tools but strict
+    about the final answer — it MUST be exactly one allowed tag. The
+    merchant is the only first-turn user input; subsequent turns carry
+    tool-call / tool-result messages added by the agent loop.
     """
     allowed_str = ", ".join(allowed)
     return [
         {
             "role": "system",
             "content": (
-                "You tag expense transactions. "
-                "Reply with exactly one token from this list, lowercase, "
-                "no punctuation, no explanations, no thinking, no prefix: "
-                f"{allowed_str}.\n"
-                "Output the single word only."
+                "You tag expense transactions.\n"
+                "If the merchant is ambiguous, use the available tools "
+                "(e.g. curl_website) to gather context. You may call tools "
+                "on multiple turns — follow links, fetch additional pages, "
+                "or try alternate URLs.\n"
+                f"You have at most {MAX_ITERATIONS} turns total. Your final "
+                "reply must be exactly one tag from this list, lowercase, "
+                "no punctuation, no other text: "
+                f"{allowed_str}"
             ),
         },
         {
@@ -92,11 +127,44 @@ def _build_prompt(merchant: str, allowed: tuple[str, ...]) -> list[dict[str, str
 
 def _normalize(raw: str, allowed: tuple[str, ...]) -> str | None:
     """Coerce the model's reply to a valid tag. Returns None if it
-    doesn't match any of the allowed values."""
-    cleaned = raw.strip().lower().rstrip(".,;:\n\t")
+    doesn't match any of the allowed values.
+
+    Some providers always wrap reasoning in ``<think>...</think>``
+    (even when ``thinking: disabled`` is requested) before emitting the
+    actual answer. We strip the block so the tag itself can be matched.
+    """
+    import re
+
+    cleaned = re.sub(r"<think>.*?</think>", "", raw, flags=re.DOTALL)
+    cleaned = cleaned.strip().lower().rstrip(".,;:\n\t")
     if cleaned in allowed:
         return cleaned
     return None
+
+
+def _extract_assistant_message(data: dict) -> dict:
+    """Pull the first choice's assistant message dict from an OpenAI-
+    compatible chat-completion response. Raises KeyError/IndexError on
+    shape mismatch — callers convert that into a "bad response" log.
+    """
+    return data["choices"][0]["message"]
+
+
+async def _call_llm(
+    client: httpx.AsyncClient,
+    url: str,
+    headers: dict,
+    payload: dict,
+) -> dict:
+    """POST to the chat-completion endpoint and return parsed JSON.
+
+    Raises :class:`httpx.HTTPError` on transport problems and
+    :class:`ValueError` / :class:`KeyError` / :class:`IndexError` on a
+    bad body. Caller decides how to log + recover.
+    """
+    resp = await client.post(url, headers=headers, json=payload)
+    resp.raise_for_status()
+    return resp.json()
 
 
 async def tag_for(merchant: str) -> str | None:
@@ -112,6 +180,11 @@ async def tag_for(merchant: str) -> str | None:
     The cache is populated only on a successful LLM response; it is
     read-only from the bot's perspective — modify rows directly in MySQL
     if you want to override a tag.
+
+    The agent loop runs up to :data:`MAX_ITERATIONS` chat-completion
+    round-trips, executing each tool call the model emits. After the
+    cap the model is forced to answer with a tag (or we give up and
+    return ``None``).
     """
     settings = get_settings()
     if not merchant:
@@ -138,52 +211,117 @@ async def tag_for(merchant: str) -> str | None:
     allowed = current_tags()
 
     url = f"{settings.llm_base_url.rstrip('/')}/chat/completions"
-    payload = {
-        "model": settings.llm_model,
-        "messages": _build_prompt(merchant, prompt_tags),
-        "max_tokens": 16,
-        "temperature": 0.0,
-        "thinking": {
-            "type": "disabled"
-        }
-    }
     headers = {
         "Authorization": f"Bearer {settings.llm_api_key}",
         "Content-Type": "application/json",
     }
+    messages = _build_prompt(merchant, prompt_tags)
+    tools = tool_specs()
 
     try:
         async with httpx.AsyncClient(timeout=10.0) as client:
-            resp = await client.post(url, headers=headers, json=payload)
-        resp.raise_for_status()
+            for iteration in range(1, MAX_ITERATIONS + 1):
+                payload = {
+                    "model": settings.llm_model,
+                    "messages": messages,
+                    "tools": tools,
+                    # 256 leaves headroom for the model's <think>...</think>
+                    # block plus the single-token tag answer. ``thinking:
+                    # disabled`` is sent for providers that honour it; the
+                    # MiniMax-M2.7 provider ignores it but its think blocks
+                    # are stripped by ``_normalize``.
+                    "max_tokens": 1024,
+                    "temperature": 0.0,
+                    "thinking": {"type": "disabled"},
+                }
+                try:
+                    data = await _call_llm(client, url, headers, payload)
+                    assistant = _extract_assistant_message(data)
+                except httpx.HTTPError as exc:
+                    logger.warning(
+                        "tag_for_llm_request_failed: %s merchant=%s iteration=%d",
+                        exc, merchant, iteration,
+                    )
+                    return None
+                except (KeyError, IndexError, TypeError, ValueError) as exc:
+                    logger.warning(
+                        "tag_for_llm_bad_response: %s merchant=%s iteration=%d",
+                        exc, merchant, iteration,
+                    )
+                    return None
+
+                tool_calls = assistant.get("tool_calls") or []
+
+                if not tool_calls:
+                    # Final-answer turn. Parse content as a tag.
+                    content = assistant.get("content") or ""
+                    tag = _normalize(content, allowed)
+                    if tag is None:
+                        logger.warning(
+                            "tag_for_llm_out_of_set: merchant=%s reply=%r "
+                            "iteration=%d allowed=%s",
+                            merchant, content, iteration, list(allowed),
+                        )
+                        return None
+                    return await _persist(cache, cache_key, tag, merchant)
+
+                # Tool-call turn. Append the assistant message verbatim
+                # so the next request includes the call id, then execute
+                # each tool and append a "tool" message in the same
+                # order. Tool messages MUST immediately follow the
+                # assistant turn that requested them.
+                messages.append(assistant)
+                for call in tool_calls:
+                    fn = call.get("function") or {}
+                    name = fn.get("name") or ""
+                    raw_args = fn.get("arguments") or ""
+                    call_id = call.get("id") or ""
+                    logger.info(
+                        "tag_for_tool_call: merchant=%s iteration=%d "
+                        "tool=%s args=%s",
+                        merchant, iteration, name, raw_args[:200],
+                    )
+                    result = await execute_tool(name, raw_args)
+                    messages.append(
+                        {
+                            "role": "tool",
+                            "tool_call_id": call_id,
+                            "content": result,
+                        }
+                    )
+
+                # If we just spent our last iteration on tool calls the
+                # next loop will exit naturally. We don't force a final
+                # tag here — the model gets one more turn, which the
+                # system prompt told it to use as its final answer.
     except httpx.HTTPError as exc:
         logger.warning("tag_for_llm_request_failed: %s merchant=%s", exc, merchant)
         return None
 
-    try:
-        data = resp.json()
-        content = data["choices"][0]["message"]["content"]
-    except (KeyError, IndexError, TypeError, ValueError) as exc:
-        logger.warning(
-            "tag_for_llm_bad_response: %s merchant=%s body=%s",
-            exc, merchant, resp.text[:200],
-        )
-        return None
+    # Exhausted MAX_ITERATIONS without a tag answer. This should be
+    # rare given the system prompt, but log so we notice if a model is
+    # ignoring it.
+    logger.warning(
+        "tag_for_llm_iteration_cap: merchant=%s iterations=%d",
+        merchant, MAX_ITERATIONS,
+    )
+    return None
 
-    tag = _normalize(content, allowed)
-    if tag is None:
-        logger.warning(
-            "tag_for_llm_out_of_set: merchant=%s reply=%r allowed=%s",
-            merchant, content, list(allowed),
-        )
-        return None
 
-    # Write-through: only successful + in-set responses get cached.
+async def _persist(
+    cache: MerchantTagCacheRepository,
+    cache_key: str,
+    tag: str,
+    merchant: str,
+) -> str:
+    """Write ``tag`` to the cache, swallowing write failures.
+
+    Cache write failures must not break the caller — log and return the
+    tag so the in-flight transaction can still proceed.
+    """
     try:
         await cache.upsert(cache_key, tag)
     except Exception as exc:
-        # Cache write failures must not break the caller — log and
-        # return the tag anyway.
         logger.warning(
             "tag_for_cache_upsert_failed: %s merchant=%s", exc, merchant
         )
