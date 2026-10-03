@@ -23,6 +23,7 @@ import pytest
 
 from app.services.parsers.dbs_cc import DBSCCParser
 from app.services.parsers.dbs_paynow import DBSPayNowParser
+from app.services.parsers.dbs_scanpay import DBSScanPayParser
 from app.services.parsers.paylah import PayLahParser
 from app.services.parsers.registry import ParserRegistry
 from app.services.parsers.trust_cc import TrustCCParser
@@ -39,6 +40,7 @@ def _make_registry() -> ParserRegistry:
     registry = ParserRegistry()
     registry.register(UOBCCParser())
     registry.register(UOBPayNowParser())
+    registry.register(DBSScanPayParser())
     registry.register(DBSCCParser())
     registry.register(DBSPayNowParser())
     registry.register(PayLahParser())
@@ -85,6 +87,14 @@ PARSE_CASES: list[ParseCase] = [
         expected_method="DBS_PAYNOW_CREDIT",
         expected_time=datetime(2026, 7, 31, 0, 11, tzinfo=SGT),
         expected_merchant="TOM TAN",
+    ),
+    ParseCase(
+        name="dbs_scanpay_debit",
+        filename="dbs_scanpay/digibank Alerts - NETS Scan and Pay transaction.txt",
+        expected_amount=Decimal("8.50"),
+        expected_method="DBS_PAYNOW_DEBIT",
+        expected_time=datetime(2026, 10, 3, 12, 26, tzinfo=SGT),
+        expected_merchant="MR BEAN",
     ),
     ParseCase(
         name="paylah_debit",

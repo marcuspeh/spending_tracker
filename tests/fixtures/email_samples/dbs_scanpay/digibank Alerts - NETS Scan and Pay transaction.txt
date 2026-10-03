@@ -1,0 +1,34 @@
+Subject: digibank alert
+
+From: ibanking.alert@dbs.com
+
+To: ('HKMPEH@GMAIL.COM',)
+
+Date: 2026-10-03 04:26:00+00:00
+
+&zwnj; &zwnj; &zwnj; &zwnj; &zwnj; &zwnj; &zwnj; &zwnj; &zwnj; &zwnj; &zwnj; &zwnj; &zwnj; &zwnj; &zwnj; &zwnj; &zwnj; &zwnj;
+
+digibank alert
+
+Problems viewing this email? Select "always display images"
+
+Transaction Ref: 627609564051570
+
+Dear Customer,
+
+Your NETS Scan & Pay transaction on 03 Oct 12:26 SGT was successful.
+
+Date & Time: 03 Oct 12:26 SGT
+Amount: S$8.50
+From: DBS/POSB Account ending 5660
+To: MR BEAN
+
+If unauthorised, call DBS hotline. To view transaction, please login to Digibank.
+
+Thank you for banking with us.
+Yours faithfully
+DBS Bank Ltd
+This is an auto-generated message. Please do not reply to this email.
+For enquiries, visit our DBS Help & Support Page
+or chat with us on DBS Digibot on our official DBS website.
+DBS Bank Ltd Co. Reg. No.: 196800306E

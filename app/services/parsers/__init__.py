@@ -6,6 +6,7 @@ from app.services.parsers.base import (
 )
 from app.services.parsers.dbs_cc import DBSCCParser
 from app.services.parsers.dbs_paynow import DBSPayNowParser
+from app.services.parsers.dbs_scanpay import DBSScanPayParser
 from app.services.parsers.paylah import PayLahParser
 from app.services.parsers.registry import ParserRegistry
 from app.services.parsers.trust_cc import TrustCCParser
@@ -17,6 +18,7 @@ __all__ = [
     "BaseParser",
     "DBSCCParser",
     "DBSPayNowParser",
+    "DBSScanPayParser",
     "ParsedTransaction",
     "ParserError",
     "ParserRegistry",

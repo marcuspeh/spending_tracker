@@ -29,6 +29,7 @@ def _build_production_registry() -> ParserRegistry:
     from app.services.parsers import (
         DBSCCParser,
         DBSPayNowParser,
+        DBSScanPayParser,
         PayLahParser,
         TrustCCParser,
         UOBCCParser,
@@ -38,6 +39,7 @@ def _build_production_registry() -> ParserRegistry:
     registry = ParserRegistry()
     registry.register(UOBCCParser())
     registry.register(UOBPayNowParser())
+    registry.register(DBSScanPayParser())
     registry.register(DBSCCParser())
     registry.register(DBSPayNowParser())
     registry.register(PayLahParser())
@@ -56,6 +58,7 @@ def production_registry() -> ParserRegistry:
         ("dbs_cc/Card Transaction Alert.txt", "DBS_CC"),
         ("dbs_paynow/iBanking Alerts.txt", "DBS_PAYNOW"),
         ("dbs_paynow/digibank Alerts - Youve received a transfer.txt", "DBS_PAYNOW"),
+        ("dbs_scanpay/digibank Alerts - NETS Scan and Pay transaction.txt", "DBS_SCANPAY"),
         ("paylah/Transaction Alerts.txt", "PAYLAH"),
         ("uob_cc/UOB - Transaction Alert.txt", "UOB_CC"),
         ("uob_cc/Your transaction has been refunded.txt", "UOB_CC"),
@@ -94,12 +97,13 @@ def test_production_registry_rejects_parse_failures(production_registry, filenam
     )
 
 
-def test_production_registry_registers_all_six_parsers(production_registry):
+def test_production_registry_registers_all_seven_parsers(production_registry):
     """Guard against dropping a parser from gmail.py again."""
     names = [p.name for p in production_registry.get_parsers()]
     expected = [
         "UOB_CC",
         "UOB_PAYNOW",
+        "DBS_SCANPAY",
         "DBS_CC",
         "DBS_PAYNOW",
         "PAYLAH",

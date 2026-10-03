@@ -21,13 +21,13 @@ import pytest
 
 from app.services.parsers.dbs_cc import DBSCCParser
 from app.services.parsers.dbs_paynow import DBSPayNowParser
+from app.services.parsers.dbs_scanpay import DBSScanPayParser
 from app.services.parsers.paylah import PayLahParser
 from app.services.parsers.registry import ParserRegistry
 from app.services.parsers.trust_cc import TrustCCParser
 from app.services.parsers.uob_cc import UOBCCParser
 from app.services.parsers.uob_paynow import UOBPayNowParser
 from app.utils.timezone import SGT
-
 from tests.parsers._fx_stub import StubFxConverter
 
 FIXTURES_DIR = Path(__file__).resolve().parents[1] / "fixtures" / "email_samples"
@@ -84,6 +84,7 @@ def _make_registry() -> ParserRegistry:
     registry = ParserRegistry()
     registry.register(UOBCCParser())
     registry.register(UOBPayNowParser())
+    registry.register(DBSScanPayParser())
     registry.register(DBSCCParser())
     registry.register(DBSPayNowParser())
     registry.register(PayLahParser())
@@ -117,6 +118,13 @@ PARSE_CASES = [
         "DBS_PAYNOW_CREDIT",
         datetime(2026, 7, 31, 0, 11, tzinfo=SGT),
         id="dbs_paynow_credit",
+    ),
+    pytest.param(
+        "dbs_scanpay/digibank Alerts - NETS Scan and Pay transaction.txt",
+        Decimal("8.50"),
+        "DBS_PAYNOW_DEBIT",
+        datetime(2026, 10, 3, 12, 26, tzinfo=SGT),
+        id="dbs_scanpay_debit",
     ),
     pytest.param(
         "paylah/Transaction Alerts.txt",

@@ -11,6 +11,7 @@ from app.services.notification import NotificationService
 from app.services.parsers import (
     DBSCCParser,
     DBSPayNowParser,
+    DBSScanPayParser,
     ParserRegistry,
     PayLahParser,
     TrustCCParser,
@@ -41,14 +42,18 @@ class GmailPoller:
         # Set up parser registry — one parser per channel. DBSPayNowParser
         # is registered before PayLahParser so PayNow wins when both
         # signals appear (some PayLah-funded transfers come from PayLah!
-        # Alerts but say "PayNow Transfer" in the body). TrustCCParser
-        # needs an FX converter so overseas transactions come back in SGD.
+        # Alerts but say "PayNow Transfer" in the body). DBSScanPayParser
+        # is registered before DBSCCParser so NETS Scan & Pay QR-code
+        # debits (which mention "DBS/POSB Account" in the body) are not
+        # misrouted to the credit-card parser. TrustCCParser needs an FX
+        # converter so overseas transactions come back in SGD.
         fx_converter = build_converter(
             markup_pct=self.settings.fx_markup_pct,
         )
         self.parser_registry = ParserRegistry()
         self.parser_registry.register(UOBCCParser())
         self.parser_registry.register(UOBPayNowParser())
+        self.parser_registry.register(DBSScanPayParser())
         self.parser_registry.register(DBSCCParser())
         self.parser_registry.register(DBSPayNowParser())
         self.parser_registry.register(PayLahParser())
