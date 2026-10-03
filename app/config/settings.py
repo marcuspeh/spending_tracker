@@ -68,7 +68,7 @@ class Settings(BaseSettings):
     # tags stay hidden from the model). When unreachable the hard-coded
     # FALLBACK_TAGS in tags_provider.py is used instead.
     config_store_url: str = Field(default="http://localhost:6002")
-    config_store_project: str = Field(default="expense_tracker")
+    config_store_project: str = Field(default="expense-tracker")
     config_store_tags_key: str = Field(default="tags")
     config_store_tags_excluded_key: str = Field(default="tags_excluded_from_llm")
     config_store_poll_seconds: float = Field(default=60.0)
