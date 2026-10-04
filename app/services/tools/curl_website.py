@@ -39,9 +39,13 @@ class CurlWebsiteTool(Tool):
                 "name": self.name,
                 "description": (
                     "Fetch the raw text of a public web page (HTTP GET) to "
-                    "identify an ambiguous merchant (e.g. AMZN → amazon.com) "
-                    "and choose the right tag. Only http(s) URLs to public "
-                    "sites are allowed. If no plausible homepage exists "
+                    "identify an unfamiliar merchant (e.g. AMZN → "
+                    "amazon.com) and choose the right tag. Only http(s) URLs "
+                    "to public sites are allowed. Make at most 2 tool "
+                    "calls for a merchant, then answer. Prefer the "
+                    "merchant's official site; if a URL fails use a single "
+                    "search-engine query rather than guessing more domains. "
+                    "If no plausible homepage exists "
                     "(cash, local stalls, or app-only merchants), skip this "
                     "call and answer with the closest tag — the tool is "
                     "optional. On a fetch error you receive a JSON error; "

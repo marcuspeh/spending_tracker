@@ -299,9 +299,9 @@ class TestPayload:
         payload = mock_client.captured_payloads[0]
         assert payload is not None, "tagger did not call the LLM"
         assert payload["model"] == "test-model"
-        # 256 leaves room for the model's <think>...</think> block plus
+        # 1024 leaves room for the model's <think>...</think> block plus
         # a single-token tag answer (see app.services.categorizer).
-        assert payload["max_tokens"] == 256
+        assert payload["max_tokens"] == 1024
         assert payload["temperature"] == 0.0
         assert payload["thinking"] == {"type": "disabled"}
         assert "reasoning" not in payload

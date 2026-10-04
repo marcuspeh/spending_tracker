@@ -108,13 +108,25 @@ def _build_prompt(
             "role": "system",
             "content": (
                 "You tag expense transactions.\n"
-                "If the merchant is ambiguous, use the available tools "
-                "(e.g. curl_website) to gather context. You may call tools "
-                "on multiple turns — follow links, fetch additional pages, "
-                "or try alternate URLs.\n"
-                f"You have at most {MAX_ITERATIONS} turns total. Your final "
-                "reply must be exactly one tag from this list, lowercase, "
-                "no punctuation, no other text: "
+                "If the merchant is already recognisable, answer "
+                "immediately without tools. Only research when the "
+                "merchant name is genuinely unfamiliar.\n"
+                "When you do research:\n"
+                "- Use at most 2 tool calls, then answer. Do not keep "
+                "searching.\n"
+                "- Prefer the merchant's official site. If a URL fails, "
+                "use a single search-engine query — never try a second "
+                "search engine or another guessed domain.\n"
+                "- Search results are often unusable. If the pages don't "
+                "clearly identify the business, stop and answer with your "
+                "best guess. An approximate tag is better than no answer.\n"
+                "When torn between two tags, pick the more "
+                "specific one (e.g. a specific venue over a broad "
+                "category).\n"
+                f"You have at most {MAX_ITERATIONS} turns total and your "
+                "last turn must be the answer. Your final reply must be "
+                "exactly one tag from this list, lowercase, no "
+                "punctuation, no other text: "
                 f"{allowed_str}"
             ),
         },
@@ -225,7 +237,7 @@ async def tag_for(merchant: str) -> str | None:
                     "model": settings.llm_model,
                     "messages": messages,
                     "tools": tools,
-                    # 256 leaves headroom for the model's <think>...</think>
+                    # 1024 leaves room for the model's <think>...</think>
                     # block plus the single-token tag answer. ``thinking:
                     # disabled`` is sent for providers that honour it; the
                     # MiniMax-M2.7 provider ignores it but its think blocks
@@ -256,14 +268,38 @@ async def tag_for(merchant: str) -> str | None:
                     # Final-answer turn. Parse content as a tag.
                     content = assistant.get("content") or ""
                     tag = _normalize(content, allowed)
-                    if tag is None:
+                    if tag is not None:
+                        return await _persist(cache, cache_key, tag, merchant)
+
+                    # Unparseable reply (e.g. the provider burned the
+                    # whole token budget on a <think> block and never
+                    # emitted the tag). While iterations remain, tell the
+                    # model to retry rather than giving up — otherwise a
+                    # single truncated turn fails the whole tag.
+                    if iteration < MAX_ITERATIONS:
                         logger.warning(
-                            "tag_for_llm_out_of_set: merchant=%s reply=%r "
-                            "iteration=%d allowed=%s",
+                            "tag_for_llm_out_of_set_retry: merchant=%s "
+                            "reply=%r iteration=%d allowed=%s",
                             merchant, content, iteration, list(allowed),
                         )
-                        return None
-                    return await _persist(cache, cache_key, tag, merchant)
+                        messages.append(assistant)
+                        messages.append(
+                            {
+                                "role": "user",
+                                "content": (
+                                    "That reply was not a valid tag. Reply "
+                                    "with exactly one tag from this list and "
+                                    f"nothing else: {', '.join(allowed)}"
+                                ),
+                            }
+                        )
+                        continue
+                    logger.warning(
+                        "tag_for_llm_out_of_set: merchant=%s reply=%r "
+                        "iteration=%d allowed=%s",
+                        merchant, content, iteration, list(allowed),
+                    )
+                    return None
 
                 # Tool-call turn. Append the assistant message verbatim
                 # so the next request includes the call id, then execute
