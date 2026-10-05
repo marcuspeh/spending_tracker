@@ -1,9 +1,9 @@
-import structlog
 from aiohttp import web
 
 from app.config.settings import get_settings
+from app.logging_setup import client
 
-logger = structlog.get_logger()
+log = client()
 
 
 async def health_handler(request: web.Request) -> web.Response:
@@ -49,11 +49,15 @@ async def start_health_server(bot, poller) -> web.AppRunner:
     await runner.setup()
     site = web.TCPSite(runner, host=settings.health_host, port=settings.health_port)
     await site.start()
-    logger.info("health_server_started", host=settings.health_host, port=settings.health_port)
+    log.info(
+        "health_server_started host=%s port=%d",
+        settings.health_host,
+        settings.health_port,
+    )
     return runner
 
 
 async def stop_health_server(runner: web.AppRunner) -> None:
     """Stop the HTTP health server."""
     await runner.cleanup()
-    logger.info("health_server_stopped")
+    log.info("health_server_stopped")

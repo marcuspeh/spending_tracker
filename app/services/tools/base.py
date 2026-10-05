@@ -25,10 +25,14 @@ import json
 from abc import ABC, abstractmethod
 from typing import Any, ClassVar
 
+from app.logging_setup import client
+
 #: Result of a tool run — always serialised to JSON before being sent
 #: back to the model as the ``content`` of a ``tool`` message. Keep it
 #: small; the model has to re-read the whole conversation.
 ToolResult = dict[str, Any]
+
+log = client()
 
 
 class Tool(ABC):
@@ -149,11 +153,6 @@ async def execute(name: str, arguments: str) -> str:
     except Exception as exc:  # noqa: BLE001
         # A tool that raises is a bug, but the agent loop must keep
         # running so the model can react. Log + return an envelope.
-        import logging
-
-        logging.getLogger(__name__).warning(
-            "tool_run_uncaught_exception tool=%s err=%s",
-            name, exc,
-        )
+        log.warn("tool_run_uncaught_exception tool=%s err=%s", name, exc)
         return json.dumps({"error": f"tool {name!r} crashed: {exc}"})
     return json.dumps(result)

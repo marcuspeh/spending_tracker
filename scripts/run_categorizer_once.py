@@ -20,7 +20,6 @@ from __future__ import annotations
 
 import argparse
 import asyncio
-import logging
 import os
 import sys
 
@@ -98,12 +97,16 @@ async def _run(merchant: str, *, no_cache: bool, reset_cache: bool) -> int:
 
 
 def main() -> None:
-    logging.basicConfig(
-        level=logging.INFO,
-        format="%(asctime)s %(levelname)s %(name)s :: %(message)s",
-    )
+    from app.logging_setup import setup_logging, shutdown_logging
+
+    setup_logging()
     args = _build_argparser().parse_args()
-    code = asyncio.run(_run(args.merchant, no_cache=args.no_cache, reset_cache=args.reset_cache))
+    try:
+        code = asyncio.run(
+            _run(args.merchant, no_cache=args.no_cache, reset_cache=args.reset_cache),
+        )
+    finally:
+        shutdown_logging()
     raise SystemExit(code)
 
 

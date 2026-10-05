@@ -15,15 +15,16 @@ lifecycle (start/stop) and lookup (current/excluded/llm_tags).
 
 from __future__ import annotations
 
-import logging
 from typing import TYPE_CHECKING
 
 from config_store import ConfigClient
 
+from app.logging_setup import client
+
 if TYPE_CHECKING:
     from app.services.tags_provider import TagsProvider
 
-logger = logging.getLogger(__name__)
+log = client()
 
 
 def _parse_csv_tags(raw: str) -> tuple[str, ...] | None:
@@ -87,7 +88,7 @@ def _empty_excluded() -> tuple[str, ...]:
     return EMPTY_EXCLUDED
 
 
-async def _build_tags(client: ConfigClient, cfg: TagsConfig) -> tuple[str, ...]:
+async def _build_tags(cfg_client: ConfigClient, cfg: TagsConfig) -> tuple[str, ...]:
     """SDK init_client for the allowed-list payload.
 
     Invalid payloads (empty / duplicates) fall back to
@@ -97,7 +98,7 @@ async def _build_tags(client: ConfigClient, cfg: TagsConfig) -> tuple[str, ...]:
     parsed = _parse_csv_tags(cfg.tags)
     fallback_tags = _fallback_tags()
     if parsed is None:
-        logger.warning(
+        log.warn(
             "tags_provider_invalid_payload raw=%r fallback=%s",
             cfg.tags,
             list(fallback_tags),
@@ -106,12 +107,12 @@ async def _build_tags(client: ConfigClient, cfg: TagsConfig) -> tuple[str, ...]:
     provider: TagsProvider | None = _provider_singleton()
     if provider is not None:
         provider._tags = parsed  # noqa: SLF001
-    logger.info("tags_provider_updated tags=%s source=config_store", list(parsed))
+    log.info("tags_provider_updated tags=%s source=config_store", list(parsed))
     return parsed
 
 
 async def _build_excluded(
-    client: ConfigClient, cfg: ExcludedTagsConfig
+    cfg_client: ConfigClient, cfg: ExcludedTagsConfig
 ) -> tuple[str, ...]:
     """SDK init_client for the excluded-list payload.
 
@@ -124,7 +125,7 @@ async def _build_excluded(
         provider = _provider_singleton()
         if provider is not None:
             provider._excluded = empty_exc  # noqa: SLF001
-        logger.warning(
+        log.warn(
             "tags_provider_invalid_excluded_payload raw=%r fallback=%s",
             cfg.tags,
             list(empty_exc),
@@ -133,7 +134,7 @@ async def _build_excluded(
     provider = _provider_singleton()
     if provider is not None:
         provider._excluded = parsed  # noqa: SLF001
-    logger.info(
+    log.info(
         "tags_provider_updated excluded=%s source=config_store", list(parsed)
     )
     return parsed

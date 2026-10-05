@@ -1,11 +1,12 @@
 import sys
 
 import httpx
-import structlog
 
 from app.config.settings import get_settings
+from app.logging_setup import client, setup_logging
 
-logger = structlog.get_logger()
+setup_logging()
+log = client()
 
 
 def healthcheck() -> int:
@@ -27,16 +28,20 @@ def healthcheck() -> int:
     try:
         response = httpx.get(url, timeout=5.0)
     except httpx.RequestError as e:
-        logger.error("healthcheck_failed", step="connect", error=str(e))
+        log.error("healthcheck_failed step=connect error=%s", e)
         print(f"ERROR: Cannot reach health server at {url}: {e}", file=sys.stderr)
         return 1
 
     if response.status_code == 200:
-        logger.info("healthcheck_success", payload=response.json())
+        log.info("healthcheck_success payload=%s", response.json())
         print("Healthcheck passed")
         return 0
 
-    logger.error("healthcheck_failed", status=response.status_code, body=response.text)
+    log.error(
+        "healthcheck_failed status=%d body=%s",
+        response.status_code,
+        response.text,
+    )
     print(
         f"ERROR: Health endpoint returned {response.status_code}: {response.text}",
         file=sys.stderr,

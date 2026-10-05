@@ -1,11 +1,11 @@
 import asyncio
 from typing import Any, Callable, Coroutine
 
-import structlog
 from imap_tools import AND, MailBox
 
 from app.config.settings import get_settings
 from app.database.enums import ImportStatus
+from app.logging_setup import client
 from app.services.email_ingestion import EmailIngestionService
 from app.services.notification import NotificationService
 from app.services.parsers import (
@@ -22,7 +22,7 @@ from app.telegram.bot import TelegramBot
 from app.utils.fx import build_converter
 from app.utils.html import strip_html
 
-logger = structlog.get_logger()
+log = client()
 
 
 class GmailPoller:
@@ -63,7 +63,7 @@ class GmailPoller:
         """Start the polling loop."""
         self._running = True
         self._task = asyncio.create_task(self._poll_loop())
-        logger.info("gmail_poller_started", host=self.settings.imap_host)
+        log.info("gmail_poller_started host=%s", self.settings.imap_host)
 
     async def stop(self) -> None:
         """Stop the polling loop."""
@@ -74,7 +74,7 @@ class GmailPoller:
                 await self._task
             except asyncio.CancelledError:
                 pass
-        logger.info("gmail_poller_stopped")
+        log.info("gmail_poller_stopped")
 
     async def _poll_loop(self) -> None:
         """Main polling loop."""
@@ -82,13 +82,13 @@ class GmailPoller:
             try:
                 await self._poll_once()
             except Exception as e:
-                logger.error("poll_error", error=str(e))
+                log.error("poll_error error=%s", e)
 
             await asyncio.sleep(self.settings.poll_interval_seconds)
 
     async def _poll_once(self) -> None:
         """Poll for unseen emails once."""
-        logger.debug("poll_start")
+        log.debug("poll_start")
 
         def fetch_unseen():
             with MailBox(self.settings.imap_host, port=self.settings.imap_port) as mailbox:
@@ -99,7 +99,7 @@ class GmailPoller:
         try:
             emails = await asyncio.to_thread(fetch_unseen)
         except Exception as e:
-            logger.error("fetch_error", error=str(e))
+            log.error("fetch_error error=%s", e)
             return
 
         email_count = 0
@@ -107,7 +107,7 @@ class GmailPoller:
             email_count += 1
             await self._process_email(email)
 
-        logger.info("poll_end", emails_fetched=email_count)
+        log.info("poll_end emails_fetched=%d", email_count)
 
     async def _process_email(self, email) -> None:
         """Process a single email."""
@@ -117,15 +117,15 @@ class GmailPoller:
         # colliding on the unique constraint.
         message_id = email.uid or ""
         if not message_id:
-            logger.warning("email_no_uid", subject=email.subject)
+            log.warning("email_no_uid subject=%s", email.subject)
 
             await asyncio.to_thread(self._mark_as_read, email)
             return
 
-        logger.debug(
-            "email_fetched",
-            message_id=message_id,
-            subject=email.subject,
+        log.debug(
+            "email_fetched message_id=%s subject=%s",
+            message_id,
+            email.subject,
         )
 
         body = email.text or (strip_html(email.html) if email.html else "") or ""
@@ -155,17 +155,17 @@ class GmailPoller:
                 await asyncio.to_thread(self._mark_as_read, email)
 
             if status == ImportStatus.SUCCESS:
-                logger.info("email_processed", message_id=message_id, status=status.value)
+                log.info("email_processed message_id=%s status=%s", message_id, status.value)
             elif status == ImportStatus.FAILED:
-                logger.warning("email_failed", message_id=message_id, status=status.value)
+                log.warn("email_failed message_id=%s status=%s", message_id, status.value)
             else:  # SKIPPED
-                logger.info("email_skipped", message_id=message_id)
+                log.info("email_skipped message_id=%s", message_id)
 
             if self.on_email_processed:
                 await self.on_email_processed(status)
 
         except Exception as e:
-            logger.error("email_error", message_id=message_id, error=str(e))
+            log.error("email_error message_id=%s error=%s", message_id, e)
             await asyncio.to_thread(self._mark_as_read, email)
 
     def _mark_as_read(self, email) -> None:
@@ -177,4 +177,4 @@ class GmailPoller:
             ) as mailbox:
                 mailbox.flag(email.uid, ["\\Seen"], True)
         except Exception as e:
-            logger.error("mark_read_error", error=str(e))
+            log.error("mark_read_error error=%s", e)

@@ -40,7 +40,6 @@ falling back to ``None`` on total failure.
 
 from __future__ import annotations
 
-import logging
 from typing import Final
 
 import httpx
@@ -49,12 +48,13 @@ from app.config.settings import get_settings
 from app.database.repositories.merchant_category_cache import (
     MerchantTagCacheRepository,
 )
+from app.logging_setup import client
 from app.services.merchant_normalizer import normalize_merchant
 from app.services.tags_provider import FALLBACK_TAGS, get_tags_provider, llm_tags
 from app.services.tools import execute as execute_tool
 from app.services.tools import specs as tool_specs
 
-logger = logging.getLogger(__name__)
+log = client()
 
 
 #: Compatibility alias for the fallback tag list. Production code should
@@ -250,13 +250,13 @@ async def tag_for(merchant: str) -> str | None:
                     data = await _call_llm(client, url, headers, payload)
                     assistant = _extract_assistant_message(data)
                 except httpx.HTTPError as exc:
-                    logger.warning(
+                    log.warn(
                         "tag_for_llm_request_failed: %s merchant=%s iteration=%d",
                         exc, merchant, iteration,
                     )
                     return None
                 except (KeyError, IndexError, TypeError, ValueError) as exc:
-                    logger.warning(
+                    log.warn(
                         "tag_for_llm_bad_response: %s merchant=%s iteration=%d",
                         exc, merchant, iteration,
                     )
@@ -277,7 +277,7 @@ async def tag_for(merchant: str) -> str | None:
                     # model to retry rather than giving up — otherwise a
                     # single truncated turn fails the whole tag.
                     if iteration < MAX_ITERATIONS:
-                        logger.warning(
+                        log.warn(
                             "tag_for_llm_out_of_set_retry: merchant=%s "
                             "reply=%r iteration=%d allowed=%s",
                             merchant, content, iteration, list(allowed),
@@ -294,7 +294,7 @@ async def tag_for(merchant: str) -> str | None:
                             }
                         )
                         continue
-                    logger.warning(
+                    log.warn(
                         "tag_for_llm_out_of_set: merchant=%s reply=%r "
                         "iteration=%d allowed=%s",
                         merchant, content, iteration, list(allowed),
@@ -312,7 +312,7 @@ async def tag_for(merchant: str) -> str | None:
                     name = fn.get("name") or ""
                     raw_args = fn.get("arguments") or ""
                     call_id = call.get("id") or ""
-                    logger.info(
+                    log.info(
                         "tag_for_tool_call: merchant=%s iteration=%d "
                         "tool=%s args=%s",
                         merchant, iteration, name, raw_args[:200],
@@ -331,13 +331,13 @@ async def tag_for(merchant: str) -> str | None:
                 # tag here — the model gets one more turn, which the
                 # system prompt told it to use as its final answer.
     except httpx.HTTPError as exc:
-        logger.warning("tag_for_llm_request_failed: %s merchant=%s", exc, merchant)
+        log.warn("tag_for_llm_request_failed: %s merchant=%s", exc, merchant)
         return None
 
     # Exhausted MAX_ITERATIONS without a tag answer. This should be
     # rare given the system prompt, but log so we notice if a model is
     # ignoring it.
-    logger.warning(
+    log.warn(
         "tag_for_llm_iteration_cap: merchant=%s iterations=%d",
         merchant, MAX_ITERATIONS,
     )
@@ -358,7 +358,7 @@ async def _persist(
     try:
         await cache.upsert(cache_key, tag)
     except Exception as exc:
-        logger.warning(
+        log.warn(
             "tag_for_cache_upsert_failed: %s merchant=%s", exc, merchant
         )
     return tag
@@ -393,7 +393,7 @@ async def tag_for_or_default(
     if default is None:
         default = DEFAULT_FALLBACK_TAG
     if default not in allowed:
-        logger.warning(
+        log.warn(
             "tag_for_or_default_invalid_default: default=%r allowed=%s",
             default, list(allowed),
         )

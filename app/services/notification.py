@@ -1,13 +1,13 @@
 from decimal import Decimal
 
-import structlog
 from telegram.ext import Application
 
 from app.database.models.transaction import Transaction
 from app.database.repositories.user import UserRepository
+from app.logging_setup import client
 from app.utils.timezone import utc_to_sgt
 
-logger = structlog.get_logger()
+log = client()
 
 
 def _format_amount(amount: float | Decimal) -> str:
@@ -54,7 +54,7 @@ class NotificationService:
         """
         user = await self._user_repo.get_by_id(user_id)
         if user is None:
-            logger.warning("notify_user_not_found", user_id=user_id)
+            log.warn("notify_user_not_found user_id=%s", user_id)
             return False
 
         text = format_transaction_notification(txn)
@@ -64,11 +64,11 @@ class NotificationService:
                 text=text,
             )
         except Exception as e:
-            logger.error(
-                "notify_failed",
-                user_id=user_id,
-                chat_id=user.telegram_chat_id,
-                error=str(e),
+            log.error(
+                "notify_failed user_id=%s chat_id=%s error=%s",
+                user_id,
+                user.telegram_chat_id,
+                e,
             )
             return False
         return True

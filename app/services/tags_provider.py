@@ -26,12 +26,12 @@ a transient outage is self-healing.
 
 from __future__ import annotations
 
-import logging
 from typing import Final
 
 from config_store import ClientWatcher, ConfigClient
 
 from app.config.settings import get_settings
+from app.logging_setup import client
 from app.services.tags_config_builders import (
     ExcludedTagsConfig,
     TagsConfig,
@@ -40,7 +40,7 @@ from app.services.tags_config_builders import (
     _parse_csv_tags,
 )
 
-logger = logging.getLogger(__name__)
+log = client()
 
 
 #: Hard-coded fallback used when config_store is unreachable, hasn't been
@@ -150,18 +150,18 @@ class TagsProvider:
             parsed = _parse_csv_tags(initial_tags_raw)
             if parsed is not None:
                 self._tags = parsed
-                logger.info(
+                log.info(
                     "tags_provider_started tags=%s source=config_store",
                     list(self._tags),
                 )
             else:
-                logger.warning(
+                log.warn(
                     "tags_provider_invalid_initial_payload raw=%r fallback=%s",
                     initial_tags_raw,
                     list(FALLBACK_TAGS),
                 )
         else:
-            logger.info(
+            log.info(
                 "tags_provider_started tags=%s source=fallback",
                 list(FALLBACK_TAGS),
             )
@@ -185,19 +185,19 @@ class TagsProvider:
             parsed = _parse_csv_tags(initial_excluded_raw)
             self._excluded = parsed if parsed is not None else EMPTY_EXCLUDED
             if parsed is not None:
-                logger.info(
+                log.info(
                     "tags_provider_started excluded=%s source=config_store",
                     list(self._excluded),
                 )
             else:
-                logger.warning(
+                log.warn(
                     "tags_provider_invalid_initial_excluded_payload "
                     "raw=%r fallback=%s",
                     initial_excluded_raw,
                     list(EMPTY_EXCLUDED),
                 )
         else:
-            logger.info(
+            log.info(
                 "tags_provider_started excluded=%s source=fallback",
                 list(EMPTY_EXCLUDED),
             )
@@ -217,12 +217,12 @@ class TagsProvider:
         """Try to fetch ``key`` during startup. Logs and returns None on
         any failure (the watcher will retry on the next tick).
         """
-        client = self._client
-        assert client is not None
+        cfg_client = self._client
+        assert cfg_client is not None
         try:
-            return await client.get(key)
+            return await cfg_client.get(key)
         except Exception as exc:  # noqa: BLE001
-            logger.warning(
+            log.warn(
                 "tags_provider_initial_fetch_failed key=%s label=%s err=%s",
                 key,
                 label,
@@ -238,7 +238,7 @@ class TagsProvider:
                 try:
                     await watcher.aclose()
                 except Exception as exc:  # noqa: BLE001
-                    logger.warning(
+                    log.warn(
                         "tags_provider_watcher_close_failed watcher=%s err=%s",
                         watcher_attr,
                         exc,
@@ -248,7 +248,7 @@ class TagsProvider:
             try:
                 await self._client.aclose()
             except Exception as exc:  # noqa: BLE001
-                logger.warning("tags_provider_client_close_failed err=%s", exc)
+                log.warn("tags_provider_client_close_failed err=%s", exc)
             self._client = None
 
 

@@ -165,6 +165,7 @@ uv run ruff format .
 - **Email Poller**: IMAP-based polling with deduplication
 - **Database**: Tortoise-ORM async ORM with Aerich migrations
 - **Timezone**: All user-facing times in SGT (Asia/Singapore), UTC at DB boundary
+- **Logging**: `app/logging_setup.py` is the single entry point — call sites use `client()` (a facade over the `logging-sdk` `Client`) so every event is published to Kafka. `setup_logging()` always installs a stderr handler first, so output survives even when Kafka is unreachable; `LOG_DISABLED=1` turns the SDK off entirely and leaves stderr-only logging.
 
 ## Local Development (without Docker)
 

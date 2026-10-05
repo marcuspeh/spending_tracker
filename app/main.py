@@ -1,11 +1,10 @@
 import asyncio
 import signal
 
-import structlog
-
 from app.config.settings import get_settings
 from app.database.session import close_db, init_db
 from app.health.server import start_health_server, stop_health_server
+from app.logging_setup import client, setup_logging, shutdown_logging
 from app.poller.gmail import GmailPoller
 from app.services.tags_provider import (
     init_tags_provider,
@@ -13,31 +12,14 @@ from app.services.tags_provider import (
 )
 from app.telegram.bot import TelegramBot
 
-structlog.configure(
-    processors=[
-        structlog.stdlib.filter_by_level,
-        structlog.stdlib.add_logger_name,
-        structlog.stdlib.add_log_level,
-        structlog.stdlib.PositionalArgumentsFormatter(),
-        structlog.processors.TimeStamper(fmt="iso"),
-        structlog.processors.StackInfoRenderer(),
-        structlog.processors.format_exc_info,
-        structlog.processors.UnicodeDecoder(),
-        structlog.processors.JSONRenderer(),
-    ],
-    wrapper_class=structlog.stdlib.BoundLogger,
-    context_class=dict,
-    logger_factory=structlog.stdlib.LoggerFactory(),
-    cache_logger_on_first_use=True,
-)
-
-logger = structlog.get_logger()
+setup_logging()
+log = client()
 
 
 async def main():
     """Main entry point."""
     settings = get_settings()
-    logger.info("app_starting", timezone=settings.timezone)
+    log.info("app_starting timezone=%s", settings.timezone)
 
     await init_db()
 
@@ -53,7 +35,7 @@ async def main():
     shutdown_event = asyncio.Event()
 
     def signal_handler(sig):
-        logger.info("signal_received", signal=sig)
+        log.info("signal_received signal=%s", sig)
         shutdown_event.set()
 
     for sig in (signal.SIGTERM, signal.SIGINT):
@@ -63,10 +45,10 @@ async def main():
     poller_task = asyncio.create_task(poller.start())
     bot_task = asyncio.create_task(bot.start())
 
-    logger.info("app_running")
+    log.info("app_running")
     await shutdown_event.wait()
 
-    logger.info("app_stopping")
+    log.info("app_stopping")
     await poller.stop()
     await bot.stop()
     await asyncio.gather(poller_task, bot_task, return_exceptions=True)
@@ -75,7 +57,8 @@ async def main():
     reset_tags_provider()
     await close_db()
 
-    logger.info("app_stopped")
+    log.info("app_stopped")
+    shutdown_logging()
 
 
 if __name__ == "__main__":

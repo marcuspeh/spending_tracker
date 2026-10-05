@@ -1,9 +1,9 @@
 import asyncio
 
-import structlog
 from telegram.ext import Application, CommandHandler
 
 from app.config.settings import get_settings
+from app.logging_setup import client
 from app.telegram.auth import auth_middleware
 from app.telegram.handlers import (
     add_handler,
@@ -26,7 +26,7 @@ from app.telegram.handlers import (
     week_handler,
 )
 
-logger = structlog.get_logger()
+log = client()
 
 
 class TelegramBot:
@@ -72,7 +72,7 @@ class TelegramBot:
         await self._app.updater.start_polling()
         self._running = True
 
-        logger.info("telegram_bot_started")
+        log.info("telegram_bot_started")
 
         # Run until stopped
         while self._running:
@@ -85,4 +85,4 @@ class TelegramBot:
             await self._app.updater.stop_polling()
             await self._app.stop()
             await self._app.shutdown()
-        logger.info("telegram_bot_stopped")
+        log.info("telegram_bot_stopped")

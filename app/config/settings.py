@@ -40,7 +40,19 @@ class Settings(BaseSettings):
     health_port: int = Field(default=8080)
     health_host: str = Field(default="127.0.0.1")
 
-    # Logging
+    # Logging SDK (logging_system). The project name is used as the
+    # Kafka message key, so the logging collector partitions all events
+    # for this service together.
+    log_kafka_brokers: str = Field(default="logging-kafka:9092")
+    log_topic: str = Field(default="logs")
+    log_project: str = Field(default="expense-tracker")
+    # 0 = synchronous sends; >0 buffers on a worker thread (drop-oldest).
+    log_async_capacity: int = Field(default=4096)
+    log_flush_interval: float = Field(default=1.0)
+    # Set to a non-empty value (e.g. "1") to fully disable the SDK and
+    # fall back to stderr-only logging. Useful for tests and CI.
+    log_disabled: bool = Field(default=False)
+    # Stdlib log level for the SDK's LoggingHandler.
     log_level: str = Field(default="INFO")
 
     # LLM (used to auto-tag transactions).

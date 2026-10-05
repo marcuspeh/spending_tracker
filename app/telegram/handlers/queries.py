@@ -1,11 +1,11 @@
 from typing import Awaitable, Callable
 
-import structlog
 from telegram import Update
 from telegram.ext import ContextTypes
 
 from app.database.models.user import User
 from app.database.repositories.user import UserRepository
+from app.logging_setup import client
 from app.services.categorizer import current_tags
 from app.services.expense import ExpenseService
 from app.telegram.auth import auth_handler
@@ -20,7 +20,7 @@ from app.telegram.handlers._helpers import (
 )
 from app.utils.timezone import parse_date
 
-logger = structlog.get_logger()
+log = client()
 
 
 def _parse_count(
@@ -63,7 +63,7 @@ async def _send_with_fallback(
     try:
         await send_rich_message(context.bot, chat_id, html)
     except Exception as e:
-        logger.warning("rich_message_send_failed", error=str(e))
+        log.warn("rich_message_send_failed error=%s", e)
         await context.bot.send_message(chat_id=chat_id, text=fallback_text)
 
 
