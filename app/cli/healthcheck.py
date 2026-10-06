@@ -33,7 +33,8 @@ def healthcheck() -> int:
         return 1
 
     if response.status_code == 200:
-        log.info("healthcheck_success payload=%s", response.json())
+        # Success is intentionally not logged: this runs every 60s and
+        # would emit ~1,440 events/day describing a liveness probe.
         print("Healthcheck passed")
         return 0
 

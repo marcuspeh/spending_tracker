@@ -9,8 +9,17 @@ import pytest
 
 from app import logging_setup as logging_pkg
 from app.config import settings as settings_pkg
-from app.logging_setup import client as get_log_client
-from app.logging_setup import correlation_id, setup_logging, shutdown_logging
+from app.logging_setup import (
+    REDACTED,
+    DropHealthAccessFilter,
+    RedactSecretsFilter,
+    correlation_id,
+    setup_logging,
+    shutdown_logging,
+)
+from app.logging_setup import (
+    client as get_log_client,
+)
 
 log_id_var = logging_pkg.log_id_var
 
@@ -265,3 +274,172 @@ def test_modules_import_the_sdk_facade():
         assert not hasattr(mod, "logger"), (
             f"{mod.__name__} still binds a stdlib/structlog `logger`"
         )
+
+
+# --------------------------------------------------------------------------
+# Secret redaction
+# --------------------------------------------------------------------------
+
+
+class _Collect(logging.Handler):
+    def __init__(self) -> None:
+        super().__init__()
+        self.messages: list[str] = []
+
+    def emit(self, record: logging.LogRecord) -> None:
+        self.messages.append(record.getMessage())
+
+
+def _record(name: str, msg: str, args=None) -> logging.LogRecord:
+    return logging.LogRecord(name, logging.INFO, __file__, 1, msg, args, None)
+
+
+def test_redaction_replaces_the_bot_token_in_a_url():
+    """httpx logs the full Telegram API URL, token included, at INFO."""
+    token = "8842545207:AAFakeTokenValue"
+    flt = RedactSecretsFilter([token])
+
+    record = _record(
+        "httpx",
+        'HTTP Request: POST https://api.telegram.org/bot%s/getUpdates "200 OK"',
+        (token,),
+    )
+    assert flt.filter(record) is True
+
+    message = record.getMessage()
+    assert token not in message
+    assert REDACTED in message
+    assert "api.telegram.org" in message
+
+
+def test_redaction_handles_multiple_secrets_in_one_record():
+    flt = RedactSecretsFilter(["bot-token-value", "imap-password-value", "llm-api-key-value"])
+    record = _record(
+        "app",
+        "connect bot=%s pw=%s key=%s",
+        ("bot-token-value", "imap-password-value", "llm-api-key-value"),
+    )
+    flt.filter(record)
+    message = record.getMessage()
+    for secret in ("bot-token-value", "imap-password-value", "llm-api-key-value"):
+        assert secret not in message
+    assert message.count(REDACTED) == 3
+
+
+def test_redaction_leaves_clean_records_untouched():
+    flt = RedactSecretsFilter(["bot-token-value"])
+    record = _record("app", "email_started message_id=%s", ("abc123",))
+    assert flt.filter(record) is True
+    assert record.getMessage() == "email_started message_id=abc123"
+
+
+def test_redaction_ignores_empty_secret_values():
+    """Settings default to ""; redacting that would blank every line."""
+    flt = RedactSecretsFilter(["", "", ""])
+    record = _record("app", "poll_cycle_started")
+    assert flt.filter(record) is True
+    assert record.getMessage() == "poll_cycle_started"
+
+
+def test_redaction_ignores_secrets_too_short_to_be_credentials():
+    """A 1-char password would match inside ordinary words and mangle
+    every line ("https" -> "htt[REDACTED]s")."""
+    flt = RedactSecretsFilter(["p", "abc"])
+    record = _record("httpx", "GET https://api.telegram.org/bot1:xy/getUpdates")
+    assert flt.filter(record) is True
+    assert record.getMessage() == "GET https://api.telegram.org/bot1:xy/getUpdates"
+
+
+def test_redaction_survives_a_record_shared_by_two_handlers():
+    """stderr and Kafka share one record; the second must still see the
+    redacted text rather than the original."""
+    record = _record("httpx", "url=...bot s3cret-token ...")
+
+    first, second = _Collect(), _Collect()
+    for handler in (first, second):
+        handler.addFilter(RedactSecretsFilter(["s3cret-token"]))
+
+    root = logging.getLogger()
+    root.addHandler(first)
+    root.addHandler(second)
+    try:
+        logging.getLogger("httpx").handle(record)
+    finally:
+        root.removeHandler(first)
+        root.removeHandler(second)
+
+    assert first.messages == second.messages
+    assert "s3cret-token" not in first.messages[0]
+
+
+def test_setup_logging_installs_filters_on_both_handlers(monkeypatch):
+    """Filters belong on handlers, not the root logger — stdlib only runs
+    a logger's own filters for records logged directly to it, so records
+    from httpx/aiohttp would bypass a root-level filter entirely."""
+    monkeypatch.setenv("LOG_DISABLED", "1")
+    _reset_settings_cache()
+
+    setup_logging()
+    try:
+        root = logging.getLogger()
+        assert root.filters == [], "filters must not live on the root logger"
+        for handler in root.handlers:
+            kinds = {type(f) for f in handler.filters}
+            assert RedactSecretsFilter in kinds
+            assert DropHealthAccessFilter in kinds
+    finally:
+        root = logging.getLogger()
+        for handler in list(root.handlers):
+            root.removeHandler(handler)
+        _reset_settings_cache()
+
+
+# --------------------------------------------------------------------------
+# /health noise suppression
+# --------------------------------------------------------------------------
+
+
+def test_health_access_records_are_dropped():
+    flt = DropHealthAccessFilter()
+
+    server_side = _record(
+        "aiohttp.access",
+        '127.0.0.1 [06/Oct/2026] "GET /health HTTP/1.1" 200 171',
+    )
+    client_side = _record("httpx", 'HTTP Request: GET http://127.0.0.1:8080/health "200 OK"')
+
+    assert flt.filter(server_side) is False
+    assert flt.filter(client_side) is False
+
+
+def test_non_health_access_records_are_kept():
+    flt = DropHealthAccessFilter()
+
+    telegram = _record(
+        "httpx",
+        'HTTP Request: POST https://api.telegram.org/bot123:abc/getUpdates "200 OK"',
+    )
+    other = _record("aiohttp.access", '"GET /metrics HTTP/1.1" 200')
+
+    assert flt.filter(telegram) is True
+    assert flt.filter(other) is True
+
+
+def test_application_logs_mentioning_health_are_kept():
+    """Only HTTP round-trip records are dropped — an app log that happens
+    to say /health is real signal."""
+    flt = DropHealthAccessFilter()
+    record = _record("app", "health_server_started host=127.0.0.1 port=8080")
+    assert flt.filter(record) is True
+
+
+def test_healthcheck_cli_does_not_log_success():
+    """The probe runs every 60s; a success line would be ~1,440 events/day."""
+    import inspect
+
+    import app.cli.healthcheck as hc
+
+    source = inspect.getsource(hc.healthcheck)
+    assert "healthcheck_success" not in source
+    # Failures must still be reported.
+    assert "healthcheck_failed" in source

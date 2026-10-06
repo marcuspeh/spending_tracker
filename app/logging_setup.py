@@ -26,9 +26,12 @@ from __future__ import annotations
 import logging
 import sys
 from contextlib import contextmanager
-from typing import Iterator, Optional
+from typing import TYPE_CHECKING, Iterable, Iterator, Optional
 
 from app.config.settings import get_settings
+
+if TYPE_CHECKING:
+    from app.config.settings import Settings
 
 try:
     import loggingsdk
@@ -90,6 +93,7 @@ def setup_logging() -> Optional["loggingsdk.Client"]:
             fmt="%(asctime)s %(levelname)s %(name)s %(message)s",
         ),
     )
+    _install_filters(stderr_handler, settings)
 
     root = logging.getLogger()
     root.setLevel(_parse_level(settings.log_level))
@@ -115,7 +119,9 @@ def setup_logging() -> Optional["loggingsdk.Client"]:
     # ``client()`` during import can therefore strip a handler installed
     # by an earlier call.
     if not any(isinstance(h, LoggingHandler) for h in root.handlers):
-        root.addHandler(LoggingHandler(_client_instance))
+        kafka_handler = LoggingHandler(_client_instance)
+        _install_filters(kafka_handler, settings)
+        root.addHandler(kafka_handler)
     return _client_instance
 
 
@@ -172,6 +178,104 @@ def correlation_id(log_id: str | None = None) -> Iterator[str]:
         yield log_id
     finally:
         log_id_var.reset(token)
+
+
+#: Settings whose values must never reach the log pipeline. The Telegram
+#: bot token in particular leaks by default: python-telegram-bot talks to
+#: ``https://api.telegram.org/bot<token>/getUpdates`` over httpx, and
+#: httpx logs the full URL at INFO on the ``httpx`` logger, so the token
+#: lands in Kafka in plaintext.
+_REDACTED_SETTINGS = (
+    "telegram_bot_token",
+    "imap_password",
+    "mysql_password",
+    "llm_api_key",
+)
+
+REDACTED = "[REDACTED]"
+
+#: Secrets shorter than this are not redacted. A 1-2 character password
+#: would otherwise match that substring inside ordinary words and mangle
+#: every line ("https" -> "htt[REDACTED]s"). Real credentials are long, so
+#: anything this short is treated as unset.
+_MIN_REDACTABLE_LEN = 8
+
+#: Liveness endpoint served by ``app.health.server``. Kept here so the
+#: access-log filter and the health server agree on the path.
+HEALTH_PATH = "/health"
+
+
+class RedactSecretsFilter(logging.Filter):
+    """Replace known secret values with :data:`REDACTED`.
+
+    Records that contain no secret short-circuit after a single substring
+    check each, so the common case stays cheap.
+
+    Attached to both the stderr handler and the SDK's
+    :class:`~loggingsdk.LoggingHandler` so nothing escapes to Kafka.
+    """
+
+    def __init__(self, secrets: Iterable[str]) -> None:
+        super().__init__()
+        # Empty values would redact the empty string everywhere; values
+        # too short to be real credentials would corrupt unrelated text.
+        self._secrets = tuple(
+            s for s in secrets if s and len(s) >= _MIN_REDACTABLE_LEN
+        )
+
+    def filter(self, record: logging.LogRecord) -> bool:
+        if not self._secrets:
+            return True
+
+        message = record.getMessage()
+        if not any(secret in message for secret in self._secrets):
+            return True
+
+        for secret in self._secrets:
+            message = message.replace(secret, REDACTED)
+
+        # Rewrite rather than mutate: the same record can be handed to
+        # several handlers (stderr + Kafka) and each needs the redacted
+        # text, but getMessage() re-derives from msg/args every call.
+        record.msg = message
+        record.args = None
+        return True
+
+
+class DropHealthAccessFilter(logging.Filter):
+    """Drop log records describing a ``/health`` request.
+
+    The Docker healthcheck probes ``/health`` every 60s, which would
+    otherwise emit ~1,440 events a day across two loggers:
+
+    * ``aiohttp.access`` — the server-side access line, and
+    * ``httpx`` — the probe's own client-side "HTTP Request: GET ..." line.
+
+    Both are noise for a liveness check, so both are dropped. Other paths
+    are untouched, so genuine traffic stays visible.
+    """
+
+    #: Loggers whose records describe an HTTP round trip. Only these are
+    #: inspected; application logs that merely mention /health are kept.
+    _HTTP_LOGGERS = frozenset({"aiohttp.access", "httpx", "httpcore"})
+
+    def filter(self, record: logging.LogRecord) -> bool:
+        if record.name not in self._HTTP_LOGGERS:
+            return True
+        return HEALTH_PATH not in record.getMessage()
+
+
+def _install_filters(handler: logging.Handler, settings: "Settings") -> None:
+    """Attach the redaction + health filters to ``handler``.
+
+    Filters must live on the *handler*, not the root logger: stdlib only
+    runs a logger's own filters for records logged directly to it, so a
+    filter on root never sees records that ``httpx`` or
+    ``aiohttp.access`` emit — exactly the ones that leak.
+    """
+    secrets = [getattr(settings, name, "") for name in _REDACTED_SETTINGS]
+    handler.addFilter(RedactSecretsFilter(secrets))
+    handler.addFilter(DropHealthAccessFilter())
 
 
 def _parse_level(name: str) -> int:
