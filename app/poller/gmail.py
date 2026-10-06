@@ -1,11 +1,12 @@
 import asyncio
+import time
 from typing import Any, Callable, Coroutine
 
 from imap_tools import AND, MailBox
 
 from app.config.settings import get_settings
 from app.database.enums import ImportStatus
-from app.logging_setup import client
+from app.logging_setup import client, correlation_id
 from app.services.email_ingestion import EmailIngestionService
 from app.services.notification import NotificationService
 from app.services.parsers import (
@@ -103,34 +104,101 @@ class GmailPoller:
             return
 
         email_count = 0
-        for email in emails:
-            email_count += 1
-            await self._process_email(email)
+        with correlation_id() as poll_id:
+            log.info("poll_cycle_started request_id=%s", poll_id)
+            started = time.perf_counter()
+            for email in emails:
+                email_count += 1
+                await self._process_email(email, parent_id=poll_id)
 
-        log.info("poll_end emails_fetched=%d", email_count)
+            elapsed_ms = (time.perf_counter() - started) * 1000.0
+            log.info(
+                "poll_cycle_completed request_id=%s emails_fetched=%d elapsed_ms=%.1f",
+                poll_id,
+                email_count,
+                elapsed_ms,
+            )
 
-    async def _process_email(self, email) -> None:
-        """Process a single email."""
+    async def _process_email(self, email, parent_id: str | None = None) -> None:
+        """Process a single email.
+
+        Scoped by its own correlation id (nested under the poll cycle's)
+        so every event for one email — parse, LLM tagging, DB insert,
+        notification — is grouped in the logging collector.
+        """
         # Use the IMAP UID as the dedup key. email.obj is usually None with
         # imap_tools unless you ask for raw, so the Message-ID fallback
         # almost never fires — leading to many empty-string message_ids
         # colliding on the unique constraint.
         message_id = email.uid or ""
         if not message_id:
-            log.warning("email_no_uid subject=%s", email.subject)
-
-            await asyncio.to_thread(self._mark_as_read, email)
+            with correlation_id() as email_id:
+                log.warn(
+                    "email_no_uid request_id=%s parent_id=%s subject=%s",
+                    email_id,
+                    parent_id,
+                    email.subject,
+                )
+                await asyncio.to_thread(self._mark_as_read, email)
             return
 
-        log.debug(
-            "email_fetched message_id=%s subject=%s",
-            message_id,
-            email.subject,
-        )
+        with correlation_id() as email_id:
+            started = time.perf_counter()
+            log.info(
+                "email_started request_id=%s parent_id=%s message_id=%s subject=%s",
+                email_id,
+                parent_id,
+                message_id,
+                email.subject,
+            )
+            status = ImportStatus.SKIPPED
+            try:
+                notification_service = None
+                if self.telegram_bot is not None and self.telegram_bot._app is not None:
+                    notification_service = NotificationService(self.telegram_bot._app)
+                service = EmailIngestionService(
+                    self.parser_registry,
+                    notification_service=notification_service,
+                )
+                status = await service.process_email(
+                    self._to_email_dict(email)
+                )
+                if status in (ImportStatus.SUCCESS, ImportStatus.SKIPPED, ImportStatus.FAILED):
+                    await asyncio.to_thread(self._mark_as_read, email)
 
+                if self.on_email_processed:
+                    await self.on_email_processed(status)
+
+            except Exception as e:
+                await asyncio.to_thread(self._mark_as_read, email)
+                log.error(
+                    "email_failed request_id=%s message_id=%s elapsed_ms=%.1f error=%s",
+                    email_id,
+                    message_id,
+                    (time.perf_counter() - started) * 1000.0,
+                    e,
+                )
+                return
+
+            elapsed_ms = (time.perf_counter() - started) * 1000.0
+            # A FAILED import is a business outcome (unparseable email),
+            # not a service fault, so it logs at warn rather than error.
+            log_fn = log.warn if status == ImportStatus.FAILED else log.info
+            log_fn(
+                "email_completed request_id=%s message_id=%s status=%s elapsed_ms=%.1f",
+                email_id,
+                message_id,
+                status.value,
+                elapsed_ms,
+            )
+
+    @staticmethod
+    def _to_email_dict(email) -> dict[str, Any]:
+        """Flatten an imap_tools message into the dict the ingestion
+        service expects."""
         body = email.text or (strip_html(email.html) if email.html else "") or ""
-        email_dict = {
-            "message_id": message_id,
+        return {
+            "message_id": email.uid or "",
             "subject": email.subject,
             "body": body,
             "from": email.from_,
@@ -141,32 +209,6 @@ class GmailPoller:
             # UOB CC alerts that say "on 04/08/26" but no clock time).
             "date": email.date,
         }
-
-        try:
-            notification_service = None
-            if self.telegram_bot is not None and self.telegram_bot._app is not None:
-                notification_service = NotificationService(self.telegram_bot._app)
-            service = EmailIngestionService(
-                self.parser_registry,
-                notification_service=notification_service,
-            )
-            status = await service.process_email(email_dict)
-            if status in (ImportStatus.SUCCESS, ImportStatus.SKIPPED, ImportStatus.FAILED):
-                await asyncio.to_thread(self._mark_as_read, email)
-
-            if status == ImportStatus.SUCCESS:
-                log.info("email_processed message_id=%s status=%s", message_id, status.value)
-            elif status == ImportStatus.FAILED:
-                log.warn("email_failed message_id=%s status=%s", message_id, status.value)
-            else:  # SKIPPED
-                log.info("email_skipped message_id=%s", message_id)
-
-            if self.on_email_processed:
-                await self.on_email_processed(status)
-
-        except Exception as e:
-            log.error("email_error message_id=%s error=%s", message_id, e)
-            await asyncio.to_thread(self._mark_as_read, email)
 
     def _mark_as_read(self, email) -> None:
         """Mark an email as read."""

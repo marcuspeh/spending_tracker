@@ -5,30 +5,47 @@ returned :func:`client` (a thin facade over ``loggingsdk.Client``) instead
 of structlog or ``logging.getLogger(__name__)`` so all events flow through
 the Kafka pipeline configured for this service.
 
-Two safety nets:
+Three safety nets:
 
 * If the SDK can't be imported (e.g. running tests without the SDK
   installed), every ``client.info(...)`` call is a no-op.
 * If Kafka is unreachable, the SDK's async queue drops the oldest and the
   call still returns immediately.
+* Third-party log records (tortoise, httpx, python-telegram-bot) reach
+  Kafka via :class:`loggingsdk.LoggingHandler`, which
+  :func:`setup_logging` attaches to the root logger.
+
+Note that ``client.info(...)`` is dispatched straight to the producer and
+does not go through the root logger, so the app's own events do not
+appear on stderr — only third-party ones do. Set ``LOG_DISABLED=1`` to
+run with stderr output locally.
 """
 
 from __future__ import annotations
 
 import logging
 import sys
-from typing import Optional
+from contextlib import contextmanager
+from typing import Iterator, Optional
 
 from app.config.settings import get_settings
 
 try:
     import loggingsdk
-    from loggingsdk import Client, LoggingHandler, ParseLevel
+    from loggingsdk import (
+        Client,
+        LoggingHandler,
+        ParseLevel,
+        log_id_var,
+        new_log_id,
+    )
 except Exception:  # pragma: no cover - SDK unavailable
     loggingsdk = None  # type: ignore[assignment]
     Client = None  # type: ignore[assignment]
     LoggingHandler = None  # type: ignore[assignment]
     ParseLevel = None  # type: ignore[assignment]
+    log_id_var = None  # type: ignore[assignment]
+    new_log_id = None  # type: ignore[assignment]
 
 
 _client_instance: Optional["loggingsdk.Client"] = None
@@ -121,6 +138,40 @@ def shutdown_logging() -> None:
             _client_instance.close()
         finally:
             _client_instance = None
+
+
+@contextmanager
+def correlation_id(log_id: str | None = None) -> Iterator[str]:
+    """Bind the SDK's correlation id for the duration of the block.
+
+    Counterpart to config_store's ``CorrelationIdMiddleware``, which does
+    the same thing per HTTP request. This service has no inbound request
+    pipeline, so correlation is scoped to a unit of work instead — the
+    poll cycle and each individual email. Every event logged inside the
+    block carries the same ``logid``, so the logging collector can show
+    the whole trace (fetch → parse → tag → insert → notify).
+
+    Args:
+        log_id: Reuse an existing id (e.g. the per-cycle id when scoping
+            a single email). When omitted a fresh one is minted.
+
+    Yields:
+        The id in force for the block, so callers can include it in
+        their own log lines. Yields ``"unknown"`` when the SDK is
+        unavailable, which keeps callers free of None-checks.
+    """
+    if log_id is None:
+        log_id = new_log_id() if new_log_id is not None else "unknown"
+
+    if log_id_var is None:
+        yield log_id
+        return
+
+    token = log_id_var.set(log_id)
+    try:
+        yield log_id
+    finally:
+        log_id_var.reset(token)
 
 
 def _parse_level(name: str) -> int:

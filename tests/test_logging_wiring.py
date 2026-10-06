@@ -10,7 +10,9 @@ import pytest
 from app import logging_setup as logging_pkg
 from app.config import settings as settings_pkg
 from app.logging_setup import client as get_log_client
-from app.logging_setup import setup_logging, shutdown_logging
+from app.logging_setup import correlation_id, setup_logging, shutdown_logging
+
+log_id_var = logging_pkg.log_id_var
 
 
 @pytest.fixture(autouse=True)
@@ -165,6 +167,71 @@ def test_repeated_setup_keeps_sdk_handler_installed(monkeypatch):
 def test_shutdown_logging_is_safe_when_disabled():
     shutdown_logging()
     shutdown_logging()
+
+
+def test_correlation_id_mints_a_fresh_id_per_block():
+    with correlation_id() as first:
+        pass
+    with correlation_id() as second:
+        pass
+    assert first != second
+    assert first and second
+
+
+def test_correlation_id_reuses_supplied_id():
+    with correlation_id("fixed-id") as a:
+        assert a == "fixed-id"
+        with correlation_id() as b:
+            assert b != "fixed-id"
+
+
+def test_correlation_id_restores_the_enclosing_id():
+    """Nested blocks must restore the outer id on exit, otherwise the
+    per-email scope would leak into the next poll cycle's logs."""
+    with correlation_id() as outer:
+        with correlation_id() as inner:
+            assert inner != outer
+        assert log_id_var.get() == outer
+
+    assert log_id_var.get() is None
+
+
+def test_correlation_id_restores_on_exception():
+    with pytest.raises(RuntimeError):
+        with correlation_id():
+            raise RuntimeError("boom")
+    assert log_id_var.get() is None
+
+
+def test_correlation_id_is_a_noop_when_sdk_unavailable(monkeypatch):
+    """Callers must not need None-checks, so the block still yields a
+    usable id when log_id_var is missing."""
+    monkeypatch.setattr(logging_pkg, "log_id_var", None)
+    monkeypatch.setattr(logging_pkg, "new_log_id", None)
+
+    with correlation_id() as generated:
+        assert generated == "unknown"
+
+    with correlation_id("explicit") as supplied:
+        assert supplied == "explicit"
+
+
+async def test_correlation_id_isolated_per_task():
+    """Each poll email runs as its own task, so a contextvar set in one
+    must not leak into a sibling."""
+    import asyncio
+
+    seen: dict[str, str] = {}
+
+    async def worker(name: str) -> None:
+        with correlation_id():
+            await asyncio.sleep(0)
+            seen[name] = log_id_var.get()
+
+    await asyncio.gather(worker("a"), worker("b"))
+
+    assert seen["a"] != seen["b"]
+    assert log_id_var.get() is None
 
 
 def test_modules_import_the_sdk_facade():
