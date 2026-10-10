@@ -353,7 +353,7 @@ def test_redaction_ignores_secrets_too_short_to_be_credentials():
 def test_redaction_survives_a_record_shared_by_two_handlers():
     """stderr and Kafka share one record; the second must still see the
     redacted text rather than the original."""
-    record = _record("httpx", "url=...bot s3cret-token ...")
+    record = _record("app", "url=...bot s3cret-token ...")
 
     first, second = _Collect(), _Collect()
     for handler in (first, second):
@@ -363,7 +363,7 @@ def test_redaction_survives_a_record_shared_by_two_handlers():
     root.addHandler(first)
     root.addHandler(second)
     try:
-        logging.getLogger("httpx").handle(record)
+        logging.getLogger("app").handle(record)
     finally:
         root.removeHandler(first)
         root.removeHandler(second)

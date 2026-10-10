@@ -56,6 +56,17 @@ _client_instance: Optional["loggingsdk.Client"] = None
 ``log_disabled`` is set."""
 
 
+#: Third-party HTTP loggers removed from the pipeline entirely.
+#: httpx emits one INFO line per HTTP round trip ("HTTP Request: POST
+#: ...") and httpcore one per connection event. ``disabled = True``
+#: rather than a raised level: records are never built, and a later
+#: ``setLevel`` can't accidentally re-enable the firehose.
+#: Transport failures are already reported by the callers that catch them
+#: (``log.error`` in the categorizer, fx scraper and healthcheck), so
+#: nothing is lost by dropping these loggers outright.
+_NOISY_HTTP_LOGGERS = ("httpx", "httpcore", "aiohttp.access")
+
+
 class _NullClient:
     """Drop-in replacement for ``loggingsdk.Client`` when the SDK is
     unavailable or disabled. Every method is a no-op so callers can use
@@ -97,6 +108,8 @@ def setup_logging() -> Optional["loggingsdk.Client"]:
 
     root = logging.getLogger()
     root.setLevel(_parse_level(settings.log_level))
+    for name in _NOISY_HTTP_LOGGERS:
+        logging.getLogger(name).disabled = True
     for h in list(root.handlers):
         root.removeHandler(h)
     root.addHandler(stderr_handler)
