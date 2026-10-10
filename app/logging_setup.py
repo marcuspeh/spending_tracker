@@ -11,9 +11,10 @@ Three safety nets:
   installed), every ``client.info(...)`` call is a no-op.
 * If Kafka is unreachable, the SDK's async queue drops the oldest and the
   call still returns immediately.
-* Third-party log records (tortoise, httpx, python-telegram-bot) reach
-  Kafka via :class:`loggingsdk.LoggingHandler`, which
-  :func:`setup_logging` attaches to the root logger.
+* Third-party log records (tortoise, config_store) reach Kafka via
+  :class:`loggingsdk.LoggingHandler`, which :func:`setup_logging`
+  attaches to the root logger. HTTP client loggers (httpx, httpcore,
+  aiohttp.access) are disabled outright — see :data:`_NOISY_HTTP_LOGGERS`.
 
 Note that ``client.info(...)`` is dispatched straight to the producer and
 does not go through the root logger, so the app's own events do not
@@ -26,7 +27,7 @@ from __future__ import annotations
 import logging
 import sys
 from contextlib import contextmanager
-from typing import TYPE_CHECKING, Iterable, Iterator, Optional
+from typing import TYPE_CHECKING, Iterator, Optional
 
 from app.config.settings import get_settings
 
@@ -193,66 +194,9 @@ def correlation_id(log_id: str | None = None) -> Iterator[str]:
         log_id_var.reset(token)
 
 
-#: Settings whose values must never reach the log pipeline. The Telegram
-#: bot token in particular leaks by default: python-telegram-bot talks to
-#: ``https://api.telegram.org/bot<token>/getUpdates`` over httpx, and
-#: httpx logs the full URL at INFO on the ``httpx`` logger, so the token
-#: lands in Kafka in plaintext.
-_REDACTED_SETTINGS = (
-    "telegram_bot_token",
-    "imap_password",
-    "mysql_password",
-    "llm_api_key",
-)
-
-REDACTED = "[REDACTED]"
-
-#: Secrets shorter than this are not redacted. A 1-2 character password
-#: would otherwise match that substring inside ordinary words and mangle
-#: every line ("https" -> "htt[REDACTED]s"). Real credentials are long, so
-#: anything this short is treated as unset.
-_MIN_REDACTABLE_LEN = 8
-
 #: Liveness endpoint served by ``app.health.server``. Kept here so the
 #: access-log filter and the health server agree on the path.
 HEALTH_PATH = "/health"
-
-
-class RedactSecretsFilter(logging.Filter):
-    """Replace known secret values with :data:`REDACTED`.
-
-    Records that contain no secret short-circuit after a single substring
-    check each, so the common case stays cheap.
-
-    Attached to both the stderr handler and the SDK's
-    :class:`~loggingsdk.LoggingHandler` so nothing escapes to Kafka.
-    """
-
-    def __init__(self, secrets: Iterable[str]) -> None:
-        super().__init__()
-        # Empty values would redact the empty string everywhere; values
-        # too short to be real credentials would corrupt unrelated text.
-        self._secrets = tuple(
-            s for s in secrets if s and len(s) >= _MIN_REDACTABLE_LEN
-        )
-
-    def filter(self, record: logging.LogRecord) -> bool:
-        if not self._secrets:
-            return True
-
-        message = record.getMessage()
-        if not any(secret in message for secret in self._secrets):
-            return True
-
-        for secret in self._secrets:
-            message = message.replace(secret, REDACTED)
-
-        # Rewrite rather than mutate: the same record can be handed to
-        # several handlers (stderr + Kafka) and each needs the redacted
-        # text, but getMessage() re-derives from msg/args every call.
-        record.msg = message
-        record.args = None
-        return True
 
 
 class DropHealthAccessFilter(logging.Filter):
@@ -279,15 +223,13 @@ class DropHealthAccessFilter(logging.Filter):
 
 
 def _install_filters(handler: logging.Handler, settings: "Settings") -> None:
-    """Attach the redaction + health filters to ``handler``.
+    """Attach the health filter to ``handler``.
 
     Filters must live on the *handler*, not the root logger: stdlib only
     runs a logger's own filters for records logged directly to it, so a
     filter on root never sees records that ``httpx`` or
-    ``aiohttp.access`` emit — exactly the ones that leak.
+    ``aiohttp.access`` emit.
     """
-    secrets = [getattr(settings, name, "") for name in _REDACTED_SETTINGS]
-    handler.addFilter(RedactSecretsFilter(secrets))
     handler.addFilter(DropHealthAccessFilter())
 
 
