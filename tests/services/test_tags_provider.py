@@ -83,6 +83,15 @@ class TestBuildTags:
         finally:
             tags_provider._provider = None
 
+    @pytest.mark.asyncio
+    async def test_accepts_bare_csv_string(self):
+        """ClientWatcher only builds TagsConfig when the stored value is a
+        JSON object. config_store holds plain CSV, so the builder receives
+        a bare str — reading cfg.tags raised AttributeError and the watcher
+        swallowed it, so post-startup updates never applied."""
+        result = await _build_tags(MagicMock(), "coffee,food,transport")
+        assert result == ("coffee", "food", "transport")
+
 
 class TestBuildExcluded:
     @pytest.mark.asyncio
@@ -118,6 +127,12 @@ class TestBuildExcluded:
             assert provider.excluded() == ("gym", "health")
         finally:
             tags_provider._provider = None
+
+    @pytest.mark.asyncio
+    async def test_excluded_accepts_bare_csv_string(self):
+        """Same bare-str coercion as _build_tags — see that test."""
+        result = await _build_excluded(MagicMock(), "gym,health")
+        assert result == ("gym", "health")
 
 
 class TestTagsProviderFallback:

@@ -88,6 +88,22 @@ def _empty_excluded() -> tuple[str, ...]:
     return EMPTY_EXCLUDED
 
 
+def _csv_payload(cfg: object) -> str:
+    """Extract the CSV payload from whatever the watcher hands us.
+
+    :meth:`config_store.ClientWatcher` coerces the raw string into the
+    declared ``config_type`` only when the stored value is a JSON object.
+    A plain CSV payload — which is what config_store actually holds here —
+    fails ``json.loads`` and is passed through unchanged, so ``cfg``
+    arrives as a bare :class:`str` at runtime despite the annotation.
+    Reading ``cfg.tags`` unconditionally raised ``AttributeError``, which
+    the watcher swallowed, so updates never took effect after startup.
+    """
+    if isinstance(cfg, str):
+        return cfg
+    return cfg.tags  # type: ignore[attr-defined]
+
+
 async def _build_tags(cfg_client: ConfigClient, cfg: TagsConfig) -> tuple[str, ...]:
     """SDK init_client for the allowed-list payload.
 
@@ -95,12 +111,13 @@ async def _build_tags(cfg_client: ConfigClient, cfg: TagsConfig) -> tuple[str, .
     :data:`FALLBACK_TAGS` so a typo never silently empties the allowed
     set.
     """
-    parsed = _parse_csv_tags(cfg.tags)
+    raw = _csv_payload(cfg)
+    parsed = _parse_csv_tags(raw)
     fallback_tags = _fallback_tags()
     if parsed is None:
         log.warn(
             "tags_provider_invalid_payload raw=%r fallback=%s",
-            cfg.tags,
+            raw,
             list(fallback_tags),
         )
         return fallback_tags
@@ -119,7 +136,8 @@ async def _build_excluded(
     Invalid payloads (empty / duplicates) reduce to :data:`EMPTY_EXCLUDED`
     so a typo never silently hides every tag from the LLM.
     """
-    parsed = _parse_csv_tags(cfg.tags)
+    raw = _csv_payload(cfg)
+    parsed = _parse_csv_tags(raw)
     empty_exc = _empty_excluded()
     if parsed is None:
         provider = _provider_singleton()
@@ -127,7 +145,7 @@ async def _build_excluded(
             provider._excluded = empty_exc  # noqa: SLF001
         log.warn(
             "tags_provider_invalid_excluded_payload raw=%r fallback=%s",
-            cfg.tags,
+            raw,
             list(empty_exc),
         )
         return empty_exc
