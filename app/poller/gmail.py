@@ -89,7 +89,6 @@ class GmailPoller:
 
     async def _poll_once(self) -> None:
         """Poll for unseen emails once."""
-        log.debug("poll_start")
 
         def fetch_unseen():
             with MailBox(self.settings.imap_host, port=self.settings.imap_port) as mailbox:
@@ -103,21 +102,9 @@ class GmailPoller:
             log.error("fetch_error error=%s", e)
             return
 
-        email_count = 0
         with correlation_id() as poll_id:
-            log.info("poll_cycle_started request_id=%s", poll_id)
-            started = time.perf_counter()
             for email in emails:
-                email_count += 1
                 await self._process_email(email, parent_id=poll_id)
-
-            elapsed_ms = (time.perf_counter() - started) * 1000.0
-            log.info(
-                "poll_cycle_completed request_id=%s emails_fetched=%d elapsed_ms=%.1f",
-                poll_id,
-                email_count,
-                elapsed_ms,
-            )
 
     async def _process_email(self, email, parent_id: str | None = None) -> None:
         """Process a single email.
