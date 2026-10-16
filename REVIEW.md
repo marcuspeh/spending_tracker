@@ -243,17 +243,24 @@ threaded through, or `mailbox.flag` needs the uid set — worth batching per pol
 
 ---
 
-### 9. `_is_ignored` keywords are never actually lowercased — LOW
+### 9. `_is_ignored` has a latent case-sensitivity asymmetry — LOW (not currently a bug)
 
 ```python
 def _is_ignored(self, body_lower: str) -> bool:
     return any(kw.lower() in body_lower for kw in self._IGNORE_KEYWORDS)
 ```
 
-`kw.lower()` lowercases the needle, which is fine — but the name promises the caller passed
-lowercased text, and `DBSCCParser.can_parse` does pass `body.lower()` while
-`DBSScanPayParser` passes `combined` (also lowercased). The `.lower()` is a latent trap
-for the next caller. Rename to `text` and lower both sides explicitly.
+To be clear about scope: I checked every call site and **this is not misbehaving today.**
+All seven callers pass already-lowercased text — six pass `combined` from
+`_combined_lower()`, and `DBSCCParser.can_parse` passes `body.lower()` — so the substring
+test behaves correctly, which the fixtures confirm (`bill payment made` is rejected).
+
+The issue is purely that the contract is implicit and fragile: the parameter is named
+`body_lower` but nothing enforces it, and the one-sided `kw.lower()` reads as if it does.
+The next caller who passes a raw body silently gets no ignore-matching at all — which, for
+a `"Bill Payment Made"` email, means a transaction is recorded that should have been
+skipped. Rename the parameter to `text`, lowercase both sides, and drop the misleading
+`kw.lower()`.
 
 ---
 
@@ -290,7 +297,7 @@ and #2 both live in this area, this is the gap that let them through.
   at boot. Either add `[tool.aerich]` + `py-aerich.toml`, or drop the dependency and fix the
   README. Right now the documented workflow fails.
 - **Lint does not pass.** `uv run ruff check .` → 40 errors (36 × `W292` missing trailing
-  newline, 2 × `I001`, 1 × `F401` unused `typing.Any`), and `ruff format --check` wants to
+  newline, 2 × `I001`, 1 × `F401` unused `typing.Any`, 1 × `N818`), and `ruff format --check` wants to
   reformat 52 files. CI would be red on day one.
 - `N818` on `InvalidEditValue` (should be `…Error`) — rename or add to the ignore list.
 
