@@ -1,3 +1,4 @@
+import calendar
 from typing import Awaitable, Callable
 
 from telegram import Update
@@ -18,7 +19,7 @@ from app.telegram.handlers._helpers import (
     render_transactions_table,
     send_rich_message,
 )
-from app.utils.timezone import parse_date
+from app.utils.timezone import parse_date, parse_year_month
 
 log = client()
 
@@ -119,6 +120,24 @@ def _plain_text_breakdown_message(
     return text
 
 
+async def _send_breakdown(
+    context: ContextTypes.DEFAULT_TYPE,
+    chat_id: int,
+    title: str,
+    total: float,
+    breakdown: dict[str, float],
+    has_untagged: bool,
+) -> None:
+    """Render the breakdown table and send it, with a plain-text fallback."""
+    html = render_tag_breakdown_table(breakdown, has_untagged, total, _title=title)
+    await _send_with_fallback(
+        context,
+        chat_id,
+        html,
+        _plain_text_breakdown_message(title, total, breakdown, has_untagged),
+    )
+
+
 def make_spending_breakdown_handler(
     title: str,
     fetch_total: Callable[[ExpenseService, int], Awaitable[float]],
@@ -144,14 +163,13 @@ def make_spending_breakdown_handler(
         total = await fetch_total(expense_service, user.id)
         breakdown, has_untagged = await fetch_breakdown(expense_service, user.id)
 
-        html = render_tag_breakdown_table(
-            breakdown, has_untagged, total, _title=title
-        )
-        await _send_with_fallback(
+        await _send_breakdown(
             context,
             update.effective_chat.id,
-            html,
-            _plain_text_breakdown_message(title, total, breakdown, has_untagged),
+            title,
+            total,
+            breakdown,
+            has_untagged,
         )
 
     return handler
@@ -195,11 +213,50 @@ week_handler = make_spending_breakdown_handler(
     ExpenseService.get_week_spending_by_tag,
 )
 
-month_handler = make_spending_breakdown_handler(
-    "This month's spending",
-    ExpenseService.get_month_spending,
-    ExpenseService.get_month_spending_by_tag,
-)
+
+async def month_handler(
+    update: Update, context: ContextTypes.DEFAULT_TYPE
+) -> None:
+    """Handle /month [YYYY-MM] command.
+
+    Without arguments, shows the current month's spending. With a
+    ``YYYY-MM`` argument, shows that month's spending instead.
+    """
+    args = context.args
+    if args:
+        try:
+            year, month = parse_year_month(args[0])
+        except ValueError:
+            await update.message.reply_text(
+                "Invalid month format. Use YYYY-MM, e.g. /month 2025-10."
+            )
+            return
+    else:
+        year, month = None, None
+
+    user = await _resolve_user(update, context)
+    if not user:
+        return
+
+    expense_service = ExpenseService()
+    total = await expense_service.get_month_spending(user.id, year, month)
+    breakdown, has_untagged = await expense_service.get_month_spending_by_tag(
+        user.id, year, month
+    )
+
+    title = (
+        "This month's spending"
+        if year is None
+        else f"{calendar.month_name[month]} {year} spending"
+    )
+    await _send_breakdown(
+        context,
+        update.effective_chat.id,
+        title,
+        total,
+        breakdown,
+        has_untagged,
+    )
 
 
 async def range_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:

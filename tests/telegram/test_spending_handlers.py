@@ -24,10 +24,11 @@ def _make_update(chat_id: int = 42) -> MagicMock:
     return update
 
 
-def _make_context() -> MagicMock:
+def _make_context(args: list[str] | None = None) -> MagicMock:
     """Build a mock PTB context with a bot whose ``send_message`` and
     ``_post`` are async mocks."""
     context = MagicMock()
+    context.args = args
     context.bot.send_message = AsyncMock()
     context.bot._post = AsyncMock()
     return context
@@ -251,3 +252,75 @@ class TestHandlersAreWiredToCorrectServiceMethods:
 
         assert repo.sum_amount.await_count == 1
         assert repo.sum_amount_by_tag.await_count == 1
+
+
+class TestMonthHandlerPeriod:
+    """``/month [YYYY-MM]`` — the optional period argument."""
+
+    async def test_no_args_uses_current_month(self):
+        user, user_repo = _resolve_user_ok()
+        update = _make_update()
+        context = _make_context(args=[])
+
+        repo = MagicMock()
+        repo.sum_amount = AsyncMock(return_value=3.0)
+        repo.sum_amount_by_tag = AsyncMock(return_value=({"food": 3.0}, False))
+
+        with patch.object(expense_module, "TransactionRepository", return_value=repo), \
+             patch.object(queries, "UserRepository", return_value=user_repo), \
+             patch.object(queries, "auth_handler", new=AsyncMock(return_value=True)), \
+             patch.object(queries, "send_rich_message", new=AsyncMock()) as rich:
+            await month_handler(update, context)
+
+        # No period => current month's window, and the same headline as before.
+        _, start_utc, end_utc = repo.sum_amount.await_args.args
+        assert start_utc < end_utc
+        _, _, html = rich.await_args.args
+        assert "This month's spending" in html
+
+    async def test_valid_period_queries_that_month_window(self):
+        user, user_repo = _resolve_user_ok()
+        update = _make_update()
+        context = _make_context(args=["2025-10"])
+
+        repo = MagicMock()
+        repo.sum_amount = AsyncMock(return_value=42.0)
+        repo.sum_amount_by_tag = AsyncMock(return_value=({"food": 42.0}, False))
+
+        with patch.object(expense_module, "TransactionRepository", return_value=repo), \
+             patch.object(queries, "UserRepository", return_value=user_repo), \
+             patch.object(queries, "auth_handler", new=AsyncMock(return_value=True)), \
+             patch.object(queries, "send_rich_message", new=AsyncMock()) as rich:
+            await month_handler(update, context)
+
+        # The window must cover Oct 2025 in SGT, i.e. 2025-09-30 16:00 UTC
+        # through 2025-10-31 16:00 UTC.
+        _, start_utc, end_utc = repo.sum_amount.await_args.args
+        assert start_utc.strftime("%Y-%m-%d %H:%M") == "2025-09-30 16:00"
+        assert end_utc.strftime("%Y-%m-%d %H:%M") == "2025-10-31 16:00"
+
+        _, _, html = rich.await_args.args
+        assert "October 2025 spending" in html
+        assert ">S$42.00<" in html
+
+    async def test_invalid_period_replies_with_usage_hint(self):
+        update = _make_update()
+        context = _make_context(args=["2025-13"])
+
+        with patch.object(queries, "auth_handler", new=AsyncMock(return_value=True)):
+            await month_handler(update, context)
+
+        update.message.reply_text.assert_awaited_once()
+        assert "YYYY-MM" in update.message.reply_text.await_args.args[0]
+        context.bot._post.assert_not_called()
+
+    async def test_non_numeric_period_replies_with_usage_hint(self):
+        update = _make_update()
+        context = _make_context(args=["lastmonth"])
+
+        with patch.object(queries, "auth_handler", new=AsyncMock(return_value=True)):
+            await month_handler(update, context)
+
+        update.message.reply_text.assert_awaited_once()
+        assert "YYYY-MM" in update.message.reply_text.await_args.args[0]
+        context.bot._post.assert_not_called()

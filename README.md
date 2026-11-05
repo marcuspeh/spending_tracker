@@ -95,7 +95,8 @@ Configure your Gmail to forward bank emails to the shared inbox:
 | `/latest [count]` | Show latest transactions (default: 10, max: 50) |
 | `/today` | Show today's spending total |
 | `/week` | Show this week's spending total |
-| `/thismonth` | Show this month's spending total |
+| `/month` | Show this month's spending total |
+| `/month [YYYY-MM]` | Show a specific month's spending total (e.g. `/month 2025-10`) |
 | `/range <start> <end>` | Show transactions in range (YYYY-MM-DD) |
 | `/search <merchant>` | Search transactions by merchant name |
 | `/add <amount> <merchant> [description] [date]` | Add manual transaction |
@@ -108,7 +109,7 @@ Configure your Gmail to forward bank emails to the shared inbox:
 - **Positive** = purchase/debit/payment
 - **Negative** = refund/credit
 
-This ensures `/today`, `/week`, `/thismonth`, and `/range` aggregates reflect net spend (a $5 refund reduces a $20 day's total to $15).
+This ensures `/today`, `/week`, `/month`, and `/range` aggregates reflect net spend (a $5 refund reduces a $20 day's total to $15).
 
 ## Healthcheck
 

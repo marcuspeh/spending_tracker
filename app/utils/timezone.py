@@ -43,10 +43,18 @@ def get_week_window() -> tuple[datetime, datetime]:
     return week_start, week_end
 
 
-def get_month_window() -> tuple[datetime, datetime]:
-    """Get the SGT month window (1st to end of month)."""
+def get_month_window(
+    year: int | None = None, month: int | None = None
+) -> tuple[datetime, datetime]:
+    """Get the SGT month window (1st to end of month).
+
+    With no arguments, returns the current month's window. Pass ``year``
+    and ``month`` to target a specific month.
+    """
     today = now_sgt()
-    month_start = today.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+    target_year = today.year if year is None else year
+    target_month = today.month if month is None else month
+    month_start = datetime(target_year, target_month, 1, tzinfo=SGT)
     # Calculate end of month
     if month_start.month == 12:
         month_end = month_start.replace(year=month_start.year + 1, month=1)
@@ -74,3 +82,15 @@ def parse_date(date_str: str) -> datetime:
     """Parse a date string in YYYY-MM-DD format to SGT datetime at start of day."""
     dt = datetime.strptime(date_str, "%Y-%m-%d")
     return dt.replace(tzinfo=SGT)
+
+
+def parse_year_month(value: str) -> tuple[int, int]:
+    """Parse a ``YYYY-MM`` string into a ``(year, month)`` pair.
+
+    Raises ``ValueError`` when the value isn't a valid year-month.
+    """
+    try:
+        dt = datetime.strptime(str(value).strip(), "%Y-%m")
+    except ValueError as exc:
+        raise ValueError(f"Invalid month: {value!r}. Use YYYY-MM.") from exc
+    return dt.year, dt.month

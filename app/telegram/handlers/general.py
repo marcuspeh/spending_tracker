@@ -29,6 +29,7 @@ Viewing transactions:
 /today - Show today's spending total
 /week - Show this week's spending total
 /month - Show this month's spending total
+/month [YYYY-MM] - Show a specific month's spending total (e.g. /month 2025-10)
 /range <start> <end> - Show transactions in range (YYYY-MM-DD)
 /search <merchant> - Search transactions by merchant name
 

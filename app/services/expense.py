@@ -148,18 +148,23 @@ class ExpenseService:
             user_id, sgt_to_utc(start), sgt_to_utc(end)
         )
 
-    async def get_month_spending(self, user_id: int) -> float:
-        """Get this month's total spending (signed, including refunds)."""
-        start, end = get_month_window()
+    async def get_month_spending(
+        self, user_id: int, year: int | None = None, month: int | None = None
+    ) -> float:
+        """Get a month's total spending (signed, including refunds).
+
+        Defaults to the current month when ``year``/``month`` are omitted.
+        """
+        start, end = get_month_window(year, month)
         return await self.transaction_repo.sum_amount(
             user_id, sgt_to_utc(start), sgt_to_utc(end)
         )
 
     async def get_month_spending_by_tag(
-        self, user_id: int
+        self, user_id: int, year: int | None = None, month: int | None = None
     ) -> tuple[dict[str, float], bool]:
-        """Per-tag breakdown for this month."""
-        start, end = get_month_window()
+        """Per-tag breakdown for a month (defaults to the current month)."""
+        start, end = get_month_window(year, month)
         return await self.transaction_repo.sum_amount_by_tag(
             user_id, sgt_to_utc(start), sgt_to_utc(end)
         )

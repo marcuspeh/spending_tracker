@@ -303,6 +303,16 @@ Return total spending for this week, from Monday 00:00 SGT through now (UTC conv
 
 Return total spending for this month, from the 1st 00:00 SGT through now (UTC conversion applied at the storage boundary).
 
+### /month [YYYY-MM]
+
+Accepts an optional `YYYY-MM` argument. Without it, behaves like `/thismonth` (current SGT calendar month). With it, returns total spending for that specific month, from the 1st 00:00 SGT to the 1st of the following month (UTC conversion applied at the storage boundary).
+
+Example:
+
+```
+/month 2025-10
+```
+
 ---
 
 ### /range <start_date> <end_date>
