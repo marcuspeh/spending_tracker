@@ -41,13 +41,21 @@ def _make_service(
 ) -> tuple[EmailIngestionService, dict[str, AsyncMock]]:
     """Build an EmailIngestionService whose repositories are AsyncMocks.
 
+    ``parsed`` accepts a single `ParsedTransaction` or a list of them
+    (for emails that carry several transactions).
+
     Returns the service and a dict of the mocks so callers can assert calls.
     """
     registry = ParserRegistry()
     parser = MagicMock()
-    parser.parse = MagicMock(side_effect=ParserError("bad") if parser_error else None)
-    if parsed is not None:
-        parser.parse = MagicMock(return_value=parsed)
+    if parser_error:
+        parser.parse_all = MagicMock(side_effect=ParserError("bad"))
+    elif parsed is None:
+        parser.parse_all = MagicMock(return_value=[])
+    elif isinstance(parsed, list):
+        parser.parse_all = MagicMock(return_value=parsed)
+    else:
+        parser.parse_all = MagicMock(return_value=[parsed])
     registry.register(parser)
     registry.find_parser = MagicMock(return_value=parser)
 
@@ -114,6 +122,49 @@ class TestProcessEmailSuccess:
         assert status == ImportStatus.SUCCESS
         mocks["transaction"].insert.assert_awaited_once()
         mocks["imported"].insert.assert_awaited_with("<abc@example.com>", ImportStatus.SUCCESS)
+
+    @pytest.mark.asyncio
+    async def test_inserts_every_transaction_in_a_batched_email(self):
+        # Some banks deliver several alerts in one email. Every one of
+        # them must become its own transaction row.
+        service, mocks = _make_service(
+            user_email=FakeUserEmail(user_id=42),
+            parsed=[
+                _parsed(amount="103.38"),
+                _parsed(amount="31.05"),
+            ],
+        )
+        status = await service.process_email(_email())
+        assert status == ImportStatus.SUCCESS
+        assert mocks["transaction"].insert.await_count == 2
+        inserted = [
+            call.kwargs["amount"] for call in mocks["transaction"].insert.await_args_list
+        ]
+        assert inserted == [103.38, 31.05]
+        mocks["imported"].insert.assert_awaited_with("<abc@example.com>", ImportStatus.SUCCESS)
+
+    @pytest.mark.asyncio
+    async def test_notifies_once_per_transaction(self):
+        notification_mock = MagicMock()
+        notification_mock.notify_transaction = AsyncMock()
+        service, _ = _make_service(
+            user_email=FakeUserEmail(user_id=42),
+            parsed=[_parsed(amount="103.38"), _parsed(amount="31.05")],
+            notification_service=notification_mock,
+        )
+        status = await service.process_email(_email())
+        assert status == ImportStatus.SUCCESS
+        assert notification_mock.notify_transaction.await_count == 2
+
+    @pytest.mark.asyncio
+    async def test_empty_parse_result_marks_failed(self):
+        service, mocks = _make_service(user_email=FakeUserEmail())
+        status = await service.process_email(_email())
+        assert status == ImportStatus.FAILED
+        mocks["imported"].insert.assert_awaited_with(
+            "<abc@example.com>", ImportStatus.FAILED, "PARSE_ERROR"
+        )
+        mocks["transaction"].insert.assert_not_awaited()
 
     @pytest.mark.asyncio
     async def test_user_email_string_form(self):

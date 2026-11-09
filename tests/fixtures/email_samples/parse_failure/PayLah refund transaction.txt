@@ -1,0 +1,16 @@
+Subject: Transaction Alerts
+
+From: paylah.alert@dbs.com
+
+To: ('HKMPEH@GMAIL.COM',)
+
+Date: 2026-10-26 12:55:00+08:00
+
+Transaction Ref: 261026205359MC794321
+Dear Sir/Madam,
+We refer to your PayLah! refund transaction below and are pleased to confirm that the transaction was completed.
+Date & Time: 26 Oct20:53 (SGT) Amount: SGD 0.10 From: BCRS LTD To: PayLah! Wallet (Mobile ending 8352)
+To view your transactions, login to your PayLah! Wallet and select "History" at the bottom bar of the Home page.
+Please call DBS hotline immediately if this was an unauthorised transaction.
+Thank you for banking with us.
+Yours Faithfully, DBS Bank Ltd

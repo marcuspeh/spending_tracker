@@ -54,6 +54,14 @@ def registry() -> ParserRegistry:
 
 
 @dataclass(frozen=True)
+class ExpectedTransaction:
+    amount: Decimal
+    method: str
+    time: datetime
+    merchant: str
+
+
+@dataclass(frozen=True)
 class ParseCase:
     name: str
     filename: str
@@ -61,6 +69,10 @@ class ParseCase:
     expected_method: str | None
     expected_time: datetime | None
     expected_merchant: str | None = None
+    # Set for emails that carry more than one transaction. When present,
+    # the whole list is asserted via `parse_all` and the single-value
+    # fields above are ignored.
+    expected_all: tuple[ExpectedTransaction, ...] | None = None
 
 
 PARSE_CASES: list[ParseCase] = [
@@ -160,6 +172,27 @@ PARSE_CASES: list[ParseCase] = [
         expected_time=datetime(2025, 9, 15, 23, 21, tzinfo=SGT),
         expected_merchant="UOB_PAYNOW",
     ),
+    ParseCase(
+        name="uob_cc_multiple_alerts",
+        filename="uob_cc/UOB - Multiple Transaction Alerts.txt",
+        expected_amount=None,
+        expected_method=None,
+        expected_time=None,
+        expected_all=(
+            ExpectedTransaction(
+                amount=Decimal("103.38"),
+                method="UOB_CC",
+                time=datetime(2026, 10, 24, 0, 0, tzinfo=SGT),
+                merchant="www trip com",
+            ),
+            ExpectedTransaction(
+                amount=Decimal("31.05"),
+                method="UOB_CC",
+                time=datetime(2026, 10, 9, 0, 0, tzinfo=SGT),
+                merchant="Q &M DENTAL SURGERY-YEW T",
+            ),
+        ),
+    ),
 ]
 
 
@@ -179,6 +212,29 @@ def test_parse_table_driven(registry, case: ParseCase):
     email = load_email(fixture_path)
     parser = registry.find_parser(email)
     assert parser is not None, f"[{case.name}] {case.filename}: no parser claimed the email"
+
+    if case.expected_all is not None:
+        results = parser.parse_all(email)
+        assert len(results) == len(case.expected_all), (
+            f"[{case.name}] expected {len(case.expected_all)} transactions, got {len(results)}"
+        )
+        for index, (result, expected) in enumerate(
+            zip(results, case.expected_all)
+        ):
+            assert result.amount == expected.amount, (
+                f"[{case.name}] #{index} amount: expected {expected.amount}, got {result.amount}"
+            )
+            assert result.payment_method == expected.method, (
+                f"[{case.name}] #{index} method: expected {expected.method}, got {result.payment_method}"
+            )
+            assert result.transaction_time == expected.time, (
+                f"[{case.name}] #{index} time: expected {expected.time}, got {result.transaction_time}"
+            )
+            assert result.merchant == expected.merchant, (
+                f"[{case.name}] #{index} merchant: expected {expected.merchant!r}, got {result.merchant!r}"
+            )
+        return
+
     result = parser.parse(email)
 
     if case.expected_amount is not None:
@@ -212,6 +268,10 @@ REJECT_CASES: list[RejectCase] = [
     RejectCase(name="unlock", filename="parse_failure/Your card is unlocked.txt"),
     RejectCase(name="edocs", filename="parse_failure/Your eDocuments are ready for viewing.txt"),
     RejectCase(name="ibanking_own", filename="parse_failure/iBanking Alerts.txt"),
+    RejectCase(
+        name="paylah_refund",
+        filename="parse_failure/PayLah refund transaction.txt",
+    ),
 ]
 
 

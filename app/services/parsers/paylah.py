@@ -19,6 +19,11 @@ class PayLahParser(BankParser):
     this parser always returns `PAYLAH_DEBIT` with a positive amount — even
     when the body contains words like "received" or "credit", PayLah is
     never the destination.
+
+    Refunds are the exception: a PayLah! refund notification names the
+    wallet as the *recipient* ("To: PayLah! Wallet") and describes a
+    "PayLah! refund transaction". Those are inbound credits, not
+    spending, so they are skipped rather than recorded as a debit.
     """
 
     name = "PAYLAH"
@@ -42,6 +47,11 @@ class PayLahParser(BankParser):
         ),
     ]
 
+    # A genuine PayLah debit names the wallet as the source
+    # ("From: PayLah! Wallet"). A refund names it as the recipient
+    # ("To: PayLah! Wallet"), meaning money came back in.
+    _wallet_recipient_re = compile(r"\bTo:\s*PayLah!?\s*Wallet", IGNORECASE)
+
     def can_parse(self, email: dict[str, Any]) -> bool:
         body = email.get("body", "") or ""
         if not self._has_amount(body):
@@ -52,6 +62,14 @@ class PayLahParser(BankParser):
         # PayNow wins over PayLah when both signals appear — PayLah-funded
         # PayNow transfers are claimed by DBSPayNowParser.
         if "paynow" in combined:
+            return False
+        # Refunds are inbound credits, not spending. They are skipped
+        # rather than recorded as a debit — PayLah never emails for
+        # ordinary inbound transfers, so there is no matching credit to
+        # record either.
+        if self._is_refund(combined):
+            return False
+        if self._wallet_recipient_re.search(body):
             return False
         return "paylah" in combined
 

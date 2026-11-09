@@ -178,6 +178,9 @@ Methods:
 
 * `can_parse(email) -> bool`
 * `parse(email) -> ParsedTransaction`
+* `parse_all(email) -> list[ParsedTransaction]` — returns every transaction the
+  email describes. Defaults to `[parse(email)]`; banks that batch several
+  alerts into one email (UOB) override it.
 
 Implement:
 

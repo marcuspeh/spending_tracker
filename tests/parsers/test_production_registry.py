@@ -87,6 +87,7 @@ def test_production_registry_routes_to_correct_parser(
         "parse_failure/Your card is unlocked.txt",
         "parse_failure/Your eDocuments are ready for viewing.txt",
         "parse_failure/iBanking Alerts.txt",  # Funds Transfer to own account
+        "parse_failure/PayLah refund transaction.txt",  # Inbound credit, not spending
     ],
 )
 def test_production_registry_rejects_parse_failures(production_registry, filename):

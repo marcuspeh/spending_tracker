@@ -193,3 +193,108 @@ class TestUOBCCParser:
         assert result.transaction_time.year == 2026
         assert result.transaction_time.month == 7
         assert result.transaction_time.day == 14
+
+
+class TestUOBCCParserMerchant:
+    """Merchant names must survive the regex regardless of casing or
+    punctuation — a dropped merchant silently becomes the parser-name
+    fallback ("UOB_CC"), which then poisons the tag cache."""
+
+    def setup_method(self):
+        self.parser = UOBCCParser()
+
+    def _make_email(self, body: str) -> dict:
+        return {"subject": "UOB - Transaction Alert", "body": body, "from": ""}
+
+    def test_lowercase_merchant_is_captured(self):
+        email = self._make_email(
+            "A transaction of SGD 103.38 was made with your UOB Card ending "
+            "7429 on 24/10/26 at www trip com. If unauthorised, call 24/7 "
+            "Fraud Hotline now"
+        )
+        result = self.parser.parse(email)
+        assert result.merchant == "www trip com"
+
+    def test_merchant_with_space_after_first_character_is_captured(self):
+        # "Q &M DENTAL SURGERY-YEW T" — the second character is a space,
+        # which the old `[A-Z][A-Za-z0-9]` guard rejected.
+        email = self._make_email(
+            "A transaction of SGD 31.05 was made with your UOB Card ending "
+            "5522 on 09/10/26 at Q &M DENTAL SURGERY-YEW T. If unauthorised, "
+            "call 24/7 Fraud Hotline now"
+        )
+        result = self.parser.parse(email)
+        assert result.merchant == "Q &M DENTAL SURGERY-YEW T"
+
+    def test_disclaimer_is_ignored_when_merchant_lookup_fails(self):
+        # Even with no merchant in the alert, the disclaimer's lowercase
+        # "from your computer system" must never become the merchant.
+        email = self._make_email(
+            "A transaction of SGD 10.00 was made with your UOB Card ending "
+            "5522 on 24/10/26. If unauthorised, call 24/7 Fraud Hotline now "
+            "UOB EMAIL DISCLAIMER: If you are not the intended recipient, "
+            "please delete all copies of this email from your computer system."
+        )
+        result = self.parser.parse(email)
+        assert "computer system" not in result.merchant.lower()
+
+
+class TestUOBCCParserMultipleAlerts:
+    """UOB can deliver more than one card alert in a single email. Each
+    one must be imported as its own transaction."""
+
+    _DISCLAIMER = (
+        "UOB EMAIL DISCLAIMER: Any person receiving this email and any "
+        "attachment(s) contained, shall treat the information as confidential "
+        "and not misuse, copy, disclose, distribute or retain the information "
+        "in any way that amounts to a breach of confidentiality. If you are "
+        "not the intended recipient, please delete all copies of this email "
+        "from your computer system."
+    )
+
+    def setup_method(self):
+        self.parser = UOBCCParser()
+
+    def _make_email(self, body: str) -> dict:
+        return {"subject": "UOB - Transaction Alert", "body": body, "from": ""}
+
+    def test_two_alerts_produce_two_transactions(self):
+        email = self._make_email(
+            "A transaction of SGD 103.38 was made with your UOB Card ending "
+            "7429 on 24/10/26 at www trip com. If unauthorised, call 24/7 "
+            "Fraud Hotline now "
+            + self._DISCLAIMER
+            + "\n\nA transaction of SGD 31.05 was made with your UOB Card "
+            "ending 5522 on 09/10/26 at Q &M DENTAL SURGERY-YEW T. If "
+            "unauthorised, call 24/7 Fraud Hotline now "
+            + self._DISCLAIMER
+        )
+        results = self.parser.parse_all(email)
+        assert len(results) == 2
+        assert results[0].amount == Decimal("103.38")
+        assert results[0].merchant == "www trip com"
+        assert results[0].transaction_time.day == 24
+        assert results[1].amount == Decimal("31.05")
+        assert results[1].merchant == "Q &M DENTAL SURGERY-YEW T"
+        assert results[1].transaction_time.day == 9
+        assert all(r.payment_method == "UOB_CC" for r in results)
+
+    def test_single_alert_still_yields_one_transaction(self):
+        email = self._make_email(
+            "A transaction of SGD 3.80 was made with your UOB Card ending "
+            "5522 on 16/07/26 at BUS/MRT. If unauthorised, call 24/7 Fraud "
+            "Hotline now " + self._DISCLAIMER
+        )
+        results = self.parser.parse_all(email)
+        assert len(results) == 1
+        assert results[0].merchant == "BUS/MRT"
+
+    def test_parse_all_falls_back_to_parse_for_non_alert_body(self):
+        # A body that doesn't match the standard alert shape is parsed as
+        # a single transaction rather than dropped.
+        email = self._make_email(
+            "A transaction of $45.20 was made at Cold Storage on 25 June 2024."
+        )
+        results = self.parser.parse_all(email)
+        assert len(results) == 1
+        assert results[0].amount == Decimal("45.20")

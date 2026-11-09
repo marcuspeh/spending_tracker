@@ -54,22 +54,34 @@ class EmailIngestionService:
             return ImportStatus.SKIPPED
 
         try:
-            parsed = parser.parse(email)
+            parsed_list = parser.parse_all(email)
         except ParserError:
             await self.imported_email_repo.insert(message_id, ImportStatus.FAILED, "PARSE_ERROR")
             return ImportStatus.FAILED
 
-        if is_merchant_blacklisted(parsed.merchant):
+        if not parsed_list:
+            await self.imported_email_repo.insert(message_id, ImportStatus.FAILED, "PARSE_ERROR")
+            return ImportStatus.FAILED
+
+        # Blacklist check runs before the payment-method check. When every
+        # transaction in the email is blacklisted the email is recorded as
+        # BLACKLISTED and nothing is inserted; otherwise the blacklisted
+        # ones are dropped and the rest are still imported.
+        blacklisted = [p for p in parsed_list if is_merchant_blacklisted(p.merchant)]
+        if blacklisted and len(blacklisted) == len(parsed_list):
             await self.imported_email_repo.insert(
                 message_id, ImportStatus.BLACKLISTED, "BLACKLISTED"
             )
             return ImportStatus.BLACKLISTED
+        candidates = [p for p in parsed_list if not is_merchant_blacklisted(p.merchant)]
 
-        if parsed.payment_method not in PaymentMethod._value2member_map_:
+        valid_methods = PaymentMethod._value2member_map_
+        if not any(p.payment_method in valid_methods for p in candidates):
             await self.imported_email_repo.insert(
                 message_id, ImportStatus.FAILED, "UNKNOWN_PAYMENT_METHOD"
             )
             return ImportStatus.FAILED
+        candidates = [p for p in candidates if p.payment_method in valid_methods]
 
         # Resolve ownership. Trust only `to`/`cc` — these are the addresses
         # the email was actually delivered to. `from` is the bank's domain
@@ -97,35 +109,36 @@ class EmailIngestionService:
             )
             return ImportStatus.FAILED
 
-        payment_method = PaymentMethod(parsed.payment_method)
-        transaction_time_utc = sgt_to_utc(parsed.transaction_time)
+        for parsed in candidates:
+            payment_method = PaymentMethod(parsed.payment_method)
+            transaction_time_utc = sgt_to_utc(parsed.transaction_time)
 
-        # Auto-tag. Read-through merchant cache makes this near-free on
-        # subsequent emails with the same merchant — only the first
-        # email of each unique merchant hits the LLM. When the LLM
-        # fails or returns a value outside the allowed set, the row is
-        # saved with tag="other" so every transaction still carries
-        # a usable label.
-        tag: str | None = None
-        if parsed.merchant:
-            try:
-                tag = await tag_for_or_default(parsed.merchant)
-            except Exception:
-                # Cache lookup / upsert failures must not block ingestion.
-                tag = "other"
+            # Auto-tag. Read-through merchant cache makes this near-free on
+            # subsequent emails with the same merchant — only the first
+            # email of each unique merchant hits the LLM. When the LLM
+            # fails or returns a value outside the allowed set, the row is
+            # saved with tag="other" so every transaction still carries
+            # a usable label.
+            tag: str | None = None
+            if parsed.merchant:
+                try:
+                    tag = await tag_for_or_default(parsed.merchant)
+                except Exception:
+                    # Cache lookup / upsert failures must not block ingestion.
+                    tag = "other"
 
-        txn = await self.transaction_repo.insert(
-            user_id=user_email.user_id,
-            amount=float(parsed.amount),
-            merchant=parsed.merchant,
-            payment_method=payment_method,
-            transaction_time=transaction_time_utc,
-            description=parsed.description,
-            tag=tag,
-        )
+            txn = await self.transaction_repo.insert(
+                user_id=user_email.user_id,
+                amount=float(parsed.amount),
+                merchant=parsed.merchant,
+                payment_method=payment_method,
+                transaction_time=transaction_time_utc,
+                description=parsed.description,
+                tag=tag,
+            )
 
-        if self.notification_service is not None:
-            await self.notification_service.notify_transaction(user_email.user_id, txn)
+            if self.notification_service is not None:
+                await self.notification_service.notify_transaction(user_email.user_id, txn)
 
         await self.imported_email_repo.insert(message_id, ImportStatus.SUCCESS)
         return ImportStatus.SUCCESS

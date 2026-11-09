@@ -46,6 +46,15 @@ class BaseParser(ABC):
         """Parse the email and return a `ParsedTransaction`."""
         pass
 
+    def parse_all(self, email: dict[str, Any]) -> list[ParsedTransaction]:
+        """Parse the email and return every transaction it describes.
+
+        Most bank emails contain exactly one transaction. Banks that
+        batch several alerts into a single email (UOB) override this
+        method; the default simply wraps :meth:`parse`.
+        """
+        return [self.parse(email)]
+
 
 __all__ = [
     "ParsedTransaction",
