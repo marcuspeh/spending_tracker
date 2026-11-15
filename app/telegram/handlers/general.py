@@ -26,6 +26,7 @@ Available commands:
 
 Viewing transactions:
 /latest [count] - Show latest transactions as a compact table (default: 10, max: 50; no time/method columns)
+/latest [tag] [count] - Same, filtered to one tag (e.g. /latest food, /latest food 20)
 /today - Show today's spending total
 /week - Show this week's spending total
 /month - Show this month's spending total

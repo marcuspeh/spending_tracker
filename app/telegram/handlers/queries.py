@@ -24,6 +24,30 @@ from app.utils.timezone import parse_date, parse_year_month
 log = client()
 
 
+def _parse_latest_args(
+    args: list[str] | None,
+    default_count: int = 10,
+    max_count: int = 50,
+) -> tuple[str | None, int]:
+    """Parse ``/latest [tag] [count]`` into ``(tag, count)``.
+
+    A numeric first argument is a count (``/latest 20``); a non-numeric
+    one is a tag filter, optionally followed by a count
+    (``/latest food``, ``/latest food 20``).
+    """
+    if not args:
+        return None, default_count
+    first = args[0].strip()
+    if first.isdigit():
+        return None, min(int(first), max_count)
+
+    tag = first.lower()
+    count = default_count
+    if len(args) > 1 and args[1].strip().isdigit():
+        count = min(int(args[1].strip()), max_count)
+    return tag, count
+
+
 def _parse_count(
     args: list[str] | None,
     default_count: int = 10,
@@ -176,7 +200,10 @@ def make_spending_breakdown_handler(
 
 
 async def latest_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """Handle /latest [count] command.
+    """Handle /latest [tag] [count] command.
+
+    ``/latest 20`` still means "latest 20". A non-numeric first argument
+    is a tag filter (``/latest food``, ``/latest food 20``).
 
     Sends the transactions as a Rich Message table; falls back to plain
     text on send failure.
@@ -185,14 +212,23 @@ async def latest_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
     if not user:
         return
 
-    count = _parse_count(context.args, default_count=10, max_count=50)
+    tag, count = _parse_latest_args(context.args, default_count=10, max_count=50)
+    if tag is not None and tag not in current_tags():
+        await update.message.reply_text(
+            f"Invalid tag: {tag!r}.\n"
+            f"Allowed values: {', '.join(current_tags())}."
+        )
+        return
+
     expense_service = ExpenseService()
-    transactions = await expense_service.get_latest_transactions(user.id, count)
+    transactions = await expense_service.get_latest_transactions(
+        user.id, count, tag
+    )
 
     chat_id = update.effective_chat.id
     remember_recent(chat_id, [t.id for t in transactions])
 
-    title = "Latest transactions"
+    title = "Latest transactions" if tag is None else f"Latest {tag} transactions"
     html = render_transactions_table(
         transactions, _title=title, show_time=False, show_method=False
     )

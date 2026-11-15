@@ -105,10 +105,11 @@ class ExpenseService:
         return transaction
 
     async def get_latest_transactions(
-        self, user_id: int, count: int = 10
+        self, user_id: int, count: int = 10, tag: str | None = None
     ) -> list[Transaction]:
-        """Get latest transactions for a user."""
-        return await self.transaction_repo.list_latest_for_user(user_id, count)
+        """Get latest transactions for a user, optionally limited to a
+        single ``tag``."""
+        return await self.transaction_repo.list_latest_for_user(user_id, count, tag)
 
     async def get_today_spending(self, user_id: int) -> float:
         """Get today's total spending (signed, including refunds)."""

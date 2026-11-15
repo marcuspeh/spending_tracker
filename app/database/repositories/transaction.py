@@ -53,15 +53,16 @@ class TransactionRepository:
         return Transaction.filter(user_id=user_id, deleted_at__isnull=True)
 
     async def list_latest_for_user(
-        self, user_id: int, count: int = 10
+        self, user_id: int, count: int = 10, tag: str | None = None
     ) -> list[Transaction]:
         # Order by transaction_time descending; tie-break by id so two
         # transactions with the same timestamp come back in a stable
         # order (newest insertion first).
+        window = self._base_filter(user_id)
+        if tag:
+            window = window.filter(tag=tag)
         return (
-            await self._base_filter(user_id)
-            .order_by("-transaction_time", "-id")
-            .limit(count)
+            await window.order_by("-transaction_time", "-id").limit(count)
         )
 
     async def list_in_range_for_user(
