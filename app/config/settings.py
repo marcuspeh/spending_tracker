@@ -61,9 +61,9 @@ class Settings(BaseSettings):
     # input sent to the model; the prompt constrains the output to
     # one of the allowed tags fetched from config_store at runtime
     # (see app.services.tags_provider.TagsProvider).
-    llm_base_url: str = Field(default="https://api.openrouter.ai/api/v1")
+    llm_base_url: str = Field(default="https://api.minimax.io/v1")
     llm_api_key: str = Field(default="")
-    llm_model: str = Field(default="minimax/minimax-m2.7")
+    llm_model: str = Field(default="MiniMax-M3.1-Flash")
 
     # FX (foreign-currency → SGD conversion for Trust overseas alerts).
     # Markup is the percentage added on top of the mid-market rate

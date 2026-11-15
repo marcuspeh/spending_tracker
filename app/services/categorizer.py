@@ -162,6 +162,20 @@ def _extract_assistant_message(data: dict) -> dict:
     return data["choices"][0]["message"]
 
 
+def _as_input_message(assistant: dict) -> dict:
+    """Rebuild an assistant turn for sending back to the API.
+
+    MiniMax returns the reasoning in a provider-only ``reasoning_content``
+    field. That field is not part of the request schema, so drop it and
+    keep only the fields the input messages accept.
+    """
+    msg = {"role": "assistant", "content": assistant.get("content")}
+    tool_calls = assistant.get("tool_calls")
+    if tool_calls:
+        msg["tool_calls"] = tool_calls
+    return msg
+
+
 async def _call_llm(
     client: httpx.AsyncClient,
     url: str,
@@ -237,14 +251,15 @@ async def tag_for(merchant: str) -> str | None:
                     "model": settings.llm_model,
                     "messages": messages,
                     "tools": tools,
-                    # 1024 leaves room for the model's <think>...</think>
-                    # block plus the single-token tag answer. ``thinking:
-                    # disabled`` is sent for providers that honour it; the
-                    # MiniMax-M2.7 provider ignores it but its think blocks
-                    # are stripped by ``_normalize``.
-                    "max_tokens": 1024,
-                    "temperature": 0.0,
-                    "thinking": {"type": "disabled"},
+                    # MiniMax-M3.1-Flash always thinks (adaptive thinking)
+                    # and rejects ``thinking: {"type": "disabled"}`` with
+                    # a 400. Thinking tokens count toward the output
+                    # budget, so the limit has to cover the reasoning plus
+                    # the one-token tag answer.
+                    "max_completion_tokens": 4096,
+                    # Tagging is a one-word classification — don't let the
+                    # model spend the default ``max`` reasoning budget.
+                    "reasoning_effort": "low",
                 }
                 try:
                     data = await _call_llm(client, url, headers, payload)
@@ -282,7 +297,7 @@ async def tag_for(merchant: str) -> str | None:
                             "reply=%r iteration=%d allowed=%s",
                             merchant, content, iteration, list(allowed),
                         )
-                        messages.append(assistant)
+                        messages.append(_as_input_message(assistant))
                         messages.append(
                             {
                                 "role": "user",
@@ -301,12 +316,13 @@ async def tag_for(merchant: str) -> str | None:
                     )
                     return None
 
-                # Tool-call turn. Append the assistant message verbatim
-                # so the next request includes the call id, then execute
-                # each tool and append a "tool" message in the same
-                # order. Tool messages MUST immediately follow the
-                # assistant turn that requested them.
-                messages.append(assistant)
+                # Tool-call turn. Append the assistant message (minus the
+                # provider-only reasoning field) so the next request
+                # includes the call id, then execute each tool and append
+                # a "tool" message in the same order. Tool messages MUST
+                # immediately follow the assistant turn that requested
+                # them.
+                messages.append(_as_input_message(assistant))
                 for call in tool_calls:
                     fn = call.get("function") or {}
                     name = fn.get("name") or ""
