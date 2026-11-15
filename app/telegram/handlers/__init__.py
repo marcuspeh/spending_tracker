@@ -8,6 +8,7 @@ from app.telegram.handlers.general import (
     help_handler,
     ping_handler,
     start_handler,
+    unknown_command_handler,
 )
 from app.telegram.handlers.management import (
     add_handler,
@@ -49,5 +50,6 @@ __all__ = [
     "tag_handler",
     "time_handler",
     "today_handler",
+    "unknown_command_handler",
     "week_handler",
 ]

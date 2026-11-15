@@ -1,6 +1,6 @@
 import asyncio
 
-from telegram.ext import Application, CommandHandler
+from telegram.ext import Application, CommandHandler, MessageHandler, filters
 
 from app.config.settings import get_settings
 from app.logging_setup import client
@@ -24,6 +24,7 @@ from app.telegram.handlers import (
     tag_handler,
     time_handler,
     today_handler,
+    unknown_command_handler,
     week_handler,
 )
 
@@ -70,6 +71,14 @@ class TelegramBot:
         self._app.add_handler(CommandHandler("delete", delete_handler))
         self._app.add_handler(CommandHandler("confirm", confirm_handler))
         self._app.add_handler(CommandHandler("cancel", cancel_handler))
+
+        # Catch-all for unregistered commands. Must stay LAST in this
+        # group — PTB handles at most one handler per group, so any
+        # known command is matched by the handler above and never
+        # reaches this one.
+        self._app.add_handler(
+            MessageHandler(filters.COMMAND, unknown_command_handler)
+        )
 
         await self._app.initialize()
         await self._app.start()

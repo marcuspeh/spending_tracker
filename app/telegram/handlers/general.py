@@ -74,6 +74,25 @@ Signed amount convention:
     await update.message.reply_text(help_text)
 
 
+async def unknown_command_handler(
+    update: Update, context: ContextTypes.DEFAULT_TYPE
+) -> None:
+    """Reply to a command the bot doesn't know.
+
+    Registered last in the handler group, so it only fires for commands
+    that no other handler matched.
+    """
+    if not await auth_handler(update, context):
+        return
+
+    text = update.message.text or ""
+    command = text.split()[0] if text.split() else ""
+    await update.message.reply_text(
+        f"Command not found: {command}\n"
+        "Use /help to view all commands."
+    )
+
+
 async def ping_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Handle /ping command."""
     if not await auth_handler(update, context):
