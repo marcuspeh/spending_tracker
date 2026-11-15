@@ -84,6 +84,8 @@ Configure your Gmail to forward bank emails to the shared inbox:
 1. PayNow emails from your bank
 2. PayLah notifications
 3. UOB card transaction alerts
+4. DBS card transaction alerts
+5. Trust / Citi card transaction alerts
 
 ## Telegram Commands
 
@@ -161,7 +163,7 @@ uv run ruff format .
 
 ## Architecture
 
-- **5 Parsers** (one per bank/channel): `UOBCCParser`, `UOBPayNowParser`, `DBSCCParser`, `DBSPayNowParser`, `PayLahParser` — each extends a shared `BankParser` base
+- **8 Parsers** (one per bank/channel): `UOBCCParser`, `UOBPayNowParser`, `DBSScanPayParser`, `DBSCCParser`, `DBSPayNowParser`, `PayLahParser`, `TrustCCParser`, `CitiCCParser` — each extends a shared `BankParser` base
 - **Telegram Bot**: Command-based interface with whitelist authorization
 - **Email Poller**: IMAP-based polling with deduplication
 - **Database**: Tortoise-ORM async ORM with Aerich migrations

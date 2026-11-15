@@ -19,6 +19,7 @@ from pathlib import Path
 
 import pytest
 
+from app.services.parsers.citi_cc import CitiCCParser
 from app.services.parsers.dbs_cc import DBSCCParser
 from app.services.parsers.dbs_paynow import DBSPayNowParser
 from app.services.parsers.dbs_scanpay import DBSScanPayParser
@@ -89,6 +90,7 @@ def _make_registry() -> ParserRegistry:
     registry.register(DBSPayNowParser())
     registry.register(PayLahParser())
     registry.register(TrustCCParser(fx_converter=StubFxConverter()))
+    registry.register(CitiCCParser(fx_converter=StubFxConverter()))
     return registry
 
 
@@ -104,6 +106,13 @@ PARSE_CASES = [
         "DBS_CC",
         datetime(2026, 7, 16, 12, 39, tzinfo=SGT),
         id="dbs_cc_direct",
+    ),
+    pytest.param(
+        "citi_cc/Citi Alerts - Credit Card_Ready Credit Transaction.txt",
+        Decimal("9.87"),
+        "CITI_CC",
+        datetime(2026, 11, 15, 14, 29, 10, tzinfo=SGT),
+        id="citi_cc_direct",
     ),
     pytest.param(
         "dbs_paynow/iBanking Alerts.txt",

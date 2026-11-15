@@ -21,6 +21,7 @@ from typing import Callable
 
 import pytest
 
+from app.services.parsers.citi_cc import CitiCCParser
 from app.services.parsers.dbs_cc import DBSCCParser
 from app.services.parsers.dbs_paynow import DBSPayNowParser
 from app.services.parsers.dbs_scanpay import DBSScanPayParser
@@ -45,6 +46,7 @@ def _make_registry() -> ParserRegistry:
     registry.register(DBSPayNowParser())
     registry.register(PayLahParser())
     registry.register(TrustCCParser(fx_converter=StubFxConverter()))
+    registry.register(CitiCCParser(fx_converter=StubFxConverter()))
     return registry
 
 
@@ -83,6 +85,14 @@ PARSE_CASES: list[ParseCase] = [
         expected_method="DBS_CC",
         expected_time=datetime(2026, 7, 16, 12, 39, tzinfo=SGT),
         expected_merchant="Inception SG Pte Ltd",
+    ),
+    ParseCase(
+        name="citi_cc_direct",
+        filename="citi_cc/Citi Alerts - Credit Card_Ready Credit Transaction.txt",
+        expected_amount=Decimal("9.87"),
+        expected_method="CITI_CC",
+        expected_time=datetime(2026, 11, 15, 14, 29, 10, tzinfo=SGT),
+        expected_merchant="AMAZE* ALIPAYPROGRA",
     ),
     ParseCase(
         name="dbs_paynow_debit",

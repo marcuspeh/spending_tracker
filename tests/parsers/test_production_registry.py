@@ -27,6 +27,7 @@ def _build_production_registry() -> ParserRegistry:
     pure routing test.
     """
     from app.services.parsers import (
+        CitiCCParser,
         DBSCCParser,
         DBSPayNowParser,
         DBSScanPayParser,
@@ -44,6 +45,7 @@ def _build_production_registry() -> ParserRegistry:
     registry.register(DBSPayNowParser())
     registry.register(PayLahParser())
     registry.register(TrustCCParser(fx_converter=StubFxConverter()))
+    registry.register(CitiCCParser(fx_converter=StubFxConverter()))
     return registry
 
 
@@ -55,6 +57,7 @@ def production_registry() -> ParserRegistry:
 @pytest.mark.parametrize(
     "filename,expected_parser_name",
     [
+        ("citi_cc/Citi Alerts - Credit Card_Ready Credit Transaction.txt", "CITI_CC"),
         ("dbs_cc/Card Transaction Alert.txt", "DBS_CC"),
         ("dbs_paynow/iBanking Alerts.txt", "DBS_PAYNOW"),
         ("dbs_paynow/digibank Alerts - Youve received a transfer.txt", "DBS_PAYNOW"),
@@ -98,7 +101,7 @@ def test_production_registry_rejects_parse_failures(production_registry, filenam
     )
 
 
-def test_production_registry_registers_all_seven_parsers(production_registry):
+def test_production_registry_registers_all_eight_parsers(production_registry):
     """Guard against dropping a parser from gmail.py again."""
     names = [p.name for p in production_registry.get_parsers()]
     expected = [
@@ -109,5 +112,6 @@ def test_production_registry_registers_all_seven_parsers(production_registry):
         "DBS_PAYNOW",
         "PAYLAH",
         "TRUST_CC",
+        "CITI_CC",
     ]
     assert names == expected, f"production registry order changed: got {names}"

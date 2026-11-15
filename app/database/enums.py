@@ -19,6 +19,8 @@ class PaymentMethod(str, enum.Enum):
     DBS_CC = "DBS_CC"
     DBS_CC_REFUND = "DBS_CC_REFUND"
     TRUST_CC = "TRUST_CC"
+    CITI_CC = "CITI_CC"
+    CITI_CC_REFUND = "CITI_CC_REFUND"
 
 
 class ImportStatus(str, enum.Enum):

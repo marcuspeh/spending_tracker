@@ -1,0 +1,26 @@
+Subject: Citi Alerts - Credit Card/Ready Credit Transaction
+
+From: Citibank Singapore <alerts@citibank.com.sg>
+
+To: ('HKMPEH@GMAIL.COM',)
+
+Date: 2026-11-15 06:29:14+00:00
+
+Dear Customer,
+We would like to inform you that there is a charge made on your Citi Rewards Card:
+
+
+Account Number           : XXXX-XXXX-XXXX-8673
+Transaction date         : 15/11/26
+Transaction time         : 14:29:10
+Transaction amount       : SGD9.87
+Transaction  details     : AMAZE* ALIPAYPROGRA    SINGAPORE     SGP
+
+
+Thank you for using Citi Alerts.
+
+Citibank Online
+Citibank Singapore Ltd
+Co.Reg. No. 200309485K
+
+Please do not reply to this email. To view or amend your Citi Alerts Profile, simply login to Citibank Online with your username and password. Alternatively, you may call our 24-Hour CitiPhone hotline available on our Citibank website for assistance or any other enquiries.

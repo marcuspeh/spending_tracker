@@ -4,6 +4,7 @@ from app.services.parsers.base import (
     ParsedTransaction,
     ParserError,
 )
+from app.services.parsers.citi_cc import CitiCCParser
 from app.services.parsers.dbs_cc import DBSCCParser
 from app.services.parsers.dbs_paynow import DBSPayNowParser
 from app.services.parsers.dbs_scanpay import DBSScanPayParser
@@ -16,6 +17,7 @@ from app.services.parsers.uob_paynow import UOBPayNowParser
 __all__ = [
     "BankParser",
     "BaseParser",
+    "CitiCCParser",
     "DBSCCParser",
     "DBSPayNowParser",
     "DBSScanPayParser",

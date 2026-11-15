@@ -10,6 +10,7 @@ from app.logging_setup import client, correlation_id
 from app.services.email_ingestion import EmailIngestionService
 from app.services.notification import NotificationService
 from app.services.parsers import (
+    CitiCCParser,
     DBSCCParser,
     DBSPayNowParser,
     DBSScanPayParser,
@@ -47,7 +48,8 @@ class GmailPoller:
         # is registered before DBSCCParser so NETS Scan & Pay QR-code
         # debits (which mention "DBS/POSB Account" in the body) are not
         # misrouted to the credit-card parser. TrustCCParser needs an FX
-        # converter so overseas transactions come back in SGD.
+        # converter so overseas transactions come back in SGD; so does
+        # CitiCCParser for the same reason.
         fx_converter = build_converter(
             markup_pct=self.settings.fx_markup_pct,
         )
@@ -59,6 +61,7 @@ class GmailPoller:
         self.parser_registry.register(DBSPayNowParser())
         self.parser_registry.register(PayLahParser())
         self.parser_registry.register(TrustCCParser(fx_converter=fx_converter))
+        self.parser_registry.register(CitiCCParser(fx_converter=fx_converter))
 
     async def start(self) -> None:
         """Start the polling loop."""
