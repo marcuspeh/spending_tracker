@@ -209,6 +209,26 @@ class TestCache:
         assert cache.upserts == [], "no upsert on a hit"
 
     @pytest.mark.asyncio
+    async def test_force_skips_cache_read_and_overwrites_entry(self, settings):
+        from app.services import categorizer
+
+        cache = _MockCache(hit="food")
+        with patch.object(
+            categorizer, "MerchantTagCacheRepository", return_value=cache
+        ):
+            mock_client = _MockClient([_mock_response("transport")])
+            with patch(
+                "app.services.categorizer.httpx.AsyncClient",
+                return_value=mock_client,
+            ):
+                result = await tag_for("STARBUCKS", force=True)
+
+        assert result == "transport"
+        assert len(mock_client.captured_payloads) == 1, "LLM should be called"
+        assert cache.get_calls == [], "cache should not be read when forced"
+        assert cache.upserts == [("starbucks", "transport")]
+
+    @pytest.mark.asyncio
     async def test_cache_miss_calls_llm_and_upserts(self, settings):
         from app.services import categorizer
 

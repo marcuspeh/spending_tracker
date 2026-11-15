@@ -3,7 +3,7 @@
 Grouped families of handlers live in sibling modules:
 
 * :mod:`app.telegram.handlers.add_command` — ``/add``
-* :mod:`app.telegram.handlers.edit_commands` — per-field edits (/amount, /merchant, /description, /time, /tag)
+* :mod:`app.telegram.handlers.edit_commands` — per-field edits (/amount, /merchant, /description, /time, /tag) and /retag
 * :mod:`app.telegram.handlers.delete_commands` — two-step delete flow (/delete, /confirm, /cancel)
 
 Each individual handler is re-exported from this module so the existing
@@ -22,6 +22,7 @@ from app.telegram.handlers.edit_commands import (
     amount_handler,
     description_handler,
     merchant_handler,
+    retag_handler,
     tag_handler,
     time_handler,
 )
@@ -34,6 +35,7 @@ __all__ = [
     "delete_handler",
     "description_handler",
     "merchant_handler",
+    "retag_handler",
     "tag_handler",
     "time_handler",
 ]

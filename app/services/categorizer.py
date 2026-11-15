@@ -193,7 +193,7 @@ async def _call_llm(
     return resp.json()
 
 
-async def tag_for(merchant: str) -> str | None:
+async def tag_for(merchant: str, force: bool = False) -> str | None:
     """Return a tag for ``merchant``, or None if classification fails.
 
     Network errors, timeouts, malformed JSON, and out-of-set replies all
@@ -207,6 +207,9 @@ async def tag_for(merchant: str) -> str | None:
     read-only from the bot's perspective — modify rows directly in MySQL
     if you want to override a tag.
 
+    Pass ``force=True`` to skip the cache read and re-ask the LLM (used
+    by ``/retag``). A successful answer still overwrites the cache entry.
+
     The agent loop runs up to :data:`MAX_ITERATIONS` chat-completion
     round-trips, executing each tool call the model emits. After the
     cap the model is forced to answer with a tag (or we give up and
@@ -219,9 +222,10 @@ async def tag_for(merchant: str) -> str | None:
     # Read-through cache. Skip the LLM entirely on a hit.
     cache = MerchantTagCacheRepository()
     cache_key = normalize_merchant(merchant)
-    cached = await cache.get(cache_key)
-    if cached is not None:
-        return cached
+    if not force:
+        cached = await cache.get(cache_key)
+        if cached is not None:
+            return cached
 
     if not settings.llm_api_key:
         # LLM is not configured — skip silently rather than spam logs.

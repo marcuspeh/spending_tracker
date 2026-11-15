@@ -18,6 +18,7 @@ from app.telegram.handlers import (
     month_handler,
     ping_handler,
     range_handler,
+    retag_handler,
     search_handler,
     start_handler,
     tag_handler,
@@ -63,6 +64,9 @@ class TelegramBot:
         self._app.add_handler(CommandHandler("description", description_handler))
         self._app.add_handler(CommandHandler("time", time_handler))
         self._app.add_handler(CommandHandler("tag", tag_handler))
+        # Re-run the LLM tagger on a transaction, ignoring the cached
+        # merchant→tag entry.
+        self._app.add_handler(CommandHandler("retag", retag_handler))
         self._app.add_handler(CommandHandler("delete", delete_handler))
         self._app.add_handler(CommandHandler("confirm", confirm_handler))
         self._app.add_handler(CommandHandler("cancel", cancel_handler))

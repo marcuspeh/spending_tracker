@@ -17,6 +17,7 @@ from app.telegram.handlers.management import (
     delete_handler,
     description_handler,
     merchant_handler,
+    retag_handler,
     tag_handler,
     time_handler,
 )
@@ -42,6 +43,7 @@ __all__ = [
     "month_handler",
     "ping_handler",
     "range_handler",
+    "retag_handler",
     "search_handler",
     "start_handler",
     "tag_handler",

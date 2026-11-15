@@ -47,6 +47,7 @@ Per-field editing (each accepts <index> <value>):
 /description <idx> <value> - Edit the description
 /time <idx> <YYYY-MM-DD [HH:MM]> - Edit the transaction time
 /tag <idx> <value> - Edit the tag
+/retag <idx> - Re-run the LLM tagger on a transaction (ignores the cached tag)
 
 Every transaction is auto-tagged (food, transport, groceries, shopping, subscriptions, health, entertainment, travel, transfers, fees, refunds, cash, other) on insert. If the LLM is misconfigured or fails, the tag falls back to ``other``. Use /tag <idx> <value> to set a different value manually.
 

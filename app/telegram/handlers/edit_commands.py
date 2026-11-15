@@ -1,4 +1,5 @@
-"""Per-field edit commands (/amount, /merchant, /description, /time, /tag).
+"""Per-field edit commands (/amount, /merchant, /description, /time, /tag)
+plus the LLM-driven /retag.
 
 All edit handlers share a common shape:
 
@@ -20,8 +21,9 @@ from datetime import datetime
 from telegram import Update
 from telegram.ext import ContextTypes
 
+from app.database.repositories.transaction import TransactionRepository
 from app.database.repositories.user import UserRepository
-from app.services.categorizer import current_tags
+from app.services.categorizer import current_tags, tag_for
 from app.services.expense import ExpenseService, InvalidEditValue
 from app.telegram.auth import auth_handler
 from app.telegram.handlers._state import clear_recent, resolve_recent
@@ -248,12 +250,76 @@ async def tag_handler(
     await _apply_field_edit(update, context, "tag", value)
 
 
+async def retag_handler(
+    update: Update, context: ContextTypes.DEFAULT_TYPE
+) -> None:
+    """Handle /retag <index> command.
+
+    Re-runs the LLM tagger on the transaction's merchant, ignoring the
+    cached merchant→tag entry, and writes the new tag onto the row.
+    Useful after a model change or when a cached tag is wrong.
+    """
+    if not await auth_handler(update, context):
+        return
+    args = context.args
+    if len(args) < 1:
+        await update.message.reply_text(
+            "Usage: /retag <index>\n"
+            "Example: /retag 2\n"
+            "Run /latest (or /search, /range) first to see the index."
+        )
+        return
+
+    chat_id = update.effective_chat.id
+
+    txn_id = resolve_recent(chat_id, args[0])
+    if txn_id is None:
+        await update.message.reply_text(
+            "Invalid index. Run /latest, /search, or /range first to see "
+            "the list, then use the number from that list."
+        )
+        return
+
+    user_repo = UserRepository()
+    user = await user_repo.get_by_chat_id(chat_id)
+    if not user:
+        await update.message.reply_text("User not found.")
+        return
+
+    txn_repo = TransactionRepository()
+    txn = await txn_repo.get_by_id_for_user(txn_id, user.id)
+    if not txn:
+        await update.message.reply_text("Transaction not found.")
+        return
+
+    tag = await tag_for(txn.merchant, force=True)
+    if not tag:
+        await update.message.reply_text(
+            f"Couldn't get a tag for {txn.merchant} — the LLM call failed. "
+            f"Set one manually with /tag {args[0]} <value>."
+        )
+        return
+
+    expense_service = ExpenseService()
+    try:
+        await expense_service.edit_transaction(txn_id, user.id, "tag", tag)
+    except InvalidEditValue as exc:
+        await update.message.reply_text(str(exc))
+        return
+
+    await update.message.reply_text(
+        f"Retagged transaction {txn.id}: {txn.merchant} → {tag}"
+    )
+    clear_recent(chat_id)
+
+
 __all__ = [
     "amount_handler",
     "merchant_handler",
     "description_handler",
     "time_handler",
     "tag_handler",
+    "retag_handler",
     "_apply_field_edit",
     "_parse_time_value",
 ]
